@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure Compute Target Decision Matrix</title>
+    <style>
+        :root {
+            --primary: #0078D4; /* Azure Blue */
+            --bg-color: #f3f2f1;
+            --card-bg: #ffffff;
+            --text-main: #323130;
+            --text-muted: #605e5c;
+            --border: #edebe9;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+            margin: 0;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: var(--primary);
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 15px;
+            background-color: #fff;
+            color: var(--text-main);
+            outline: none;
+        }
+
+        select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+        }
+
+        .result-card {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f0f6ff;
+            border-left: 4px solid var(--primary);
+            border-radius: 4px;
+            display: none; /* Hidden until initial evaluation */
+        }
+
+        .result-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: var(--primary);
+            margin-bottom: 4px;
+        }
+
+        .target-name {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 0 0 10px 0;
+        }
+
+        .rationale {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>VMware to Azure Decision Matrix</h2>
+        
+        <div class="form-group">
+            <label for="timeExit">Time to Exit / Urgency</label>
+            <select id="timeExit" onchange="evaluateMatrix()">
+                <option value="urgent">Urgent (Evacuate immediately)</option>
+                <option value="phased">Phased (Time to modernize)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="osControl">OS-Level Control Required?</label>
+            <select id="osControl" onchange="evaluateMatrix()">
+                <option value="yes">Yes (Need root/admin access)</option>
+                <option value="no">No (Prefer managed PaaS/SaaS)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="architecture">Application Architecture</label>
+            <select id="architecture" onchange="evaluateMatrix()">
+                <option value="cots">Monolithic / COTS</option>
+                <option value="container">Containerized (Tanzu/OpenShift)</option>
+                <option value="web">Web Application</option>
+                <option value="db">Database Tier</option>
+                <option value="vdi">Virtual Desktop Infrastructure (VDI)</option>
+            </select>
+        </div>
+
+        <div class="result-card" id="resultCard">
+            <div class="result-title">Recommended Azure Target</div>
+            <h3 class="target-name" id="targetName">Target</h3>
+            <p class="rationale" id="targetRationale">Rationale goes here.</p>
+        </div>
+    </div>
+
+    <script>
+        function evaluateMatrix() {
+            const time = document.getElementById('timeExit').value;
+            const os = document.getElementById('osControl').value;
+            const arch = document.getElementById('architecture').value;
+            
+            let target = "";
+            let rationale = "";
+
+            // Decision Logic
+            if (arch === 'vdi') {
+                target = "Azure Virtual Desktop (AVD)";
+                rationale = "AVD is the native PaaS control plane for virtual desktops, directly replacing VMware Horizon. It ensures PHI remains secure in the cloud rather than residing on physical clinical endpoints.";
+            } 
+            else if (arch === 'db') {
+                if (os === 'yes') {
+                    target = "SQL Server on Azure IaaS VMs";
+                    rationale = "Retains full OS and sysadmin control for legacy clinical databases that require third-party agents, strict file-system access, or lack PaaS support matrices.";
+                } else {
+                    target = "Azure SQL Managed Instance (SQL MI)";
+                    rationale = "SQL MI provides near 100% compatibility with on-premises SQL Server without the hypervisor or OS management overhead. Ideal for consolidating healthcare databases.";
+                }
+            } 
+            else if (arch === 'container') {
+                target = "Azure Kubernetes Service (AKS) or Azure Red Hat OpenShift (ARO)";
+                rationale = "Managed container platforms eliminate the need to maintain VMware infrastructure for Tanzu or OpenShift. They provide auto-scaling for high-throughput healthcare microservices and telemetry ingestion.";
+            } 
+            else if (arch === 'web') {
+                if (os === 'yes') {
+                    target = "Azure Virtual Machines (IaaS)";
+                    rationale = "Provides full OS control for legacy web servers requiring custom ISAPI filters, local agents, or specific configurations not supported by Azure App Service.";
+                } else {
+                    target = "Azure App Service";
+                    rationale = "Fully managed HTTP-based service for patient portals and APIs. Integrates natively with Azure Web Application Firewall (WAF) to establish strong HIPAA/HITRUST compliance boundaries.";
+                }
+            } 
+            else if (arch === 'cots') {
+                if (time === 'urgent') {
+                    target = "Azure VMware Solution (AVS)";
+                    rationale = "Urgent evacuation requires AVS to maintain the ESXi hypervisor, L2 networks, and legacy IP addresses. This allows live vMotion migrations via HCX with zero clinical downtime and avoids complex refactoring.";
+                } else {
+                    if (os === 'yes') {
+                        target = "Azure Virtual Machines (IaaS)";
+                        rationale = "A phased approach allows mapping COTS applications to native Azure compute using Azure Migrate. Provides necessary OS-level control while abandoning the VMware hypervisor entirely.";
+                    } else {
+                        target = "Azure App Service / ISV SaaS Offering";
+                        rationale = "Modernization of COTS applications often means shifting to the vendor's native SaaS offering or refactoring the deployment into managed PaaS services to eliminate IaaS overhead completely.";
+                    }
+                }
+            }
+
+            // Update UI
+            document.getElementById('targetName').innerText = target;
+            document.getElementById('targetRationale').innerText = rationale;
+            document.getElementById('resultCard').style.display = 'block';
+        }
+
+        // Run once on load to show initial state
+        window.onload = evaluateMatrix;
+    </script>
+</body>
+</html>
