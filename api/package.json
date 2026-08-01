@@ -1,0 +1,34 @@
+{
+  "name": "family-dashboard-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Azure Functions backend for the family dashboard",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --external:@azure/functions --outfile=dist/index.js --sourcemap",
+    "watch": "npm run build -- --watch",
+    "typecheck": "tsc --noEmit",
+    "start": "npm run build && func start",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.6.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@azure/data-tables": "^13.3.2",
+    "@types/luxon": "^3.7.3",
+    "@types/node": "^26.1.2",
+    "esbuild": "^0.28.1",
+    "google-auth-library": "^11.0.0",
+    "luxon": "^3.7.2",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "zod": "^4.4.3"
+  }
+}

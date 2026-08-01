@@ -1,0 +1,39 @@
+# Secrets — these files hold the Anthropic key, Google client secret, and the
+# token encryption key. Never commit them.
+local.settings.json
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+web/dist/
+api/dist/
+
+# Azure Functions / SWA local state
+bin/
+obj/
+.azure/
+.azurite/
+__azurite_db*.json
+__blobstorage__/
+__queuestorage__/
+
+# Test / coverage
+coverage/
+test-results/
+playwright-report/
+.playwright/
+
+# Editors & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

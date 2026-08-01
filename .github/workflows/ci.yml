@@ -1,0 +1,50 @@
+name: CI
+
+# Runs on EVERY branch. This matters: the SWA deploy workflow only triggers on
+# `main`, so without this there is no feedback loop at all while working on a
+# feature branch.
+
+on:
+  push:
+    branches-ignore: []
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Install
+        run: |
+          npm ci
+          npm ci --prefix web
+          npm ci --prefix api
+
+      # shared/ is pure functions encoding rules that are easy to get subtly
+      # wrong and painful to debug in production — recurrence across DST, streak
+      # state transitions, key round-trips, the PG-13 filter. This is where
+      # nearly all the test value lives.
+      - name: Unit tests (shared/)
+        run: npm test
+
+      - name: Typecheck shared/
+        run: npm run typecheck
+
+      - name: Typecheck web
+        run: npm run typecheck --prefix web
+
+      - name: Typecheck api
+        run: npm run typecheck --prefix api
+
+      - name: Build web
+        run: npm run build --prefix web
+
+      - name: Build api
+        run: npm run build --prefix api

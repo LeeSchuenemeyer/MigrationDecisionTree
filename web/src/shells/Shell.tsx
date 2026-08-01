@@ -1,0 +1,129 @@
+import type { ReactNode } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
+import { useSurface } from '@/lib/surface';
+
+/**
+ * The surface shells.
+ *
+ * Density alone is not enough to serve a wall tablet and a phone from one
+ * codebase — the information architecture genuinely differs. Shared leaf
+ * components scale in place via the `kiosk:` variant; the composition is
+ * swapped here.
+ */
+
+const NAV = [
+  { to: '/', label: 'Board', end: true },
+  { to: '/calendar', label: 'Calendar', end: false },
+  { to: '/points', label: 'Points', end: false },
+  { to: '/queue', label: 'Approvals', end: false },
+  { to: '/me', label: 'Me', end: false },
+] as const;
+
+export function Shell(): ReactNode {
+  const surface = useSurface();
+  if (surface === 'kiosk') return <KioskShell />;
+  if (surface === 'desktop') return <DesktopShell />;
+  return <MobileShell />;
+}
+
+/**
+ * Wall tablet: fixed viewport, nothing scrolls anywhere, no navigation chrome,
+ * ticker pinned to the bottom edge. Everything the family needs is on screen at
+ * once — walking past it must be enough.
+ */
+function KioskShell(): ReactNode {
+  return (
+    <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
+      <TopBar />
+      <main className="min-h-0 overflow-hidden">
+        <Outlet />
+      </main>
+      <TickerSlot />
+    </div>
+  );
+}
+
+/** Phone: bottom tab bar, each tab scrolls independently, safe-area insets. */
+function MobileShell(): ReactNode {
+  return (
+    <div className="grid h-full grid-rows-[auto_1fr_auto]">
+      <TopBar />
+      <main className="min-h-0 overflow-y-auto">
+        <Outlet />
+      </main>
+      <nav
+        className="border-line bg-panel flex justify-around border-t"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        {NAV.map((n) => (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            end={n.end}
+            className={({ isActive }) =>
+              [
+                'min-h-touch flex flex-1 items-center justify-center px-2 font-display text-xs tracking-[0.12em] uppercase',
+                isActive ? 'text-brand' : 'text-ink-faint',
+              ].join(' ')
+            }
+          >
+            {n.label}
+          </NavLink>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+/** Laptop: sidebar nav. The only surface where parent-admin work is comfortable. */
+function DesktopShell(): ReactNode {
+  return (
+    <div className="grid h-full grid-cols-[190px_1fr]">
+      <aside className="border-line bg-panel flex flex-col gap-1 border-r p-4">
+        <div className="font-display text-brand mb-4 text-sm tracking-[0.18em] uppercase">
+          Family HQ
+        </div>
+        {NAV.map((n) => (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            end={n.end}
+            className={({ isActive }) =>
+              [
+                'min-h-touch flex items-center rounded px-3 font-display text-sm tracking-[0.12em] uppercase',
+                isActive ? 'bg-panel-2 text-brand' : 'text-ink-dim hover:text-ink',
+              ].join(' ')
+            }
+          >
+            {n.label}
+          </NavLink>
+        ))}
+      </aside>
+      <div className="grid grid-rows-[auto_1fr] overflow-hidden">
+        <TopBar />
+        <main className="min-h-0 overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function TopBar(): ReactNode {
+  return (
+    <header className="border-line bg-panel flex items-center justify-between gap-4 border-b px-5 py-3">
+      <div className="font-display flex items-center gap-2 text-sm tracking-[0.16em] uppercase">
+        <span className="bg-approved inline-block size-2 rounded-full" />
+        Family HQ
+      </div>
+      {/* Clock and the avatar/session control land here in Phase 1. */}
+      <div className="text-ink-faint font-mono text-sm">—</div>
+    </header>
+  );
+}
+
+function TickerSlot(): ReactNode {
+  // The real ticker arrives in Phase 4; the slot is reserved now so the kiosk
+  // grid never reflows when it lands.
+  return <div className="border-line bg-panel h-12 border-t" aria-hidden="true" />;
+}
