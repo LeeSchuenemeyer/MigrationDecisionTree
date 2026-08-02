@@ -1,0 +1,23 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "TABLES_CONNECTION_STRING": "UseDevelopmentStorage=true",
+
+    "HOUSEHOLD_ID": "local",
+    "HOUSEHOLD_TZ": "America/New_York",
+
+    "ANTHROPIC_API_KEY": "sk-ant-...",
+
+    "GOOGLE_CLIENT_ID": "",
+    "GOOGLE_CLIENT_SECRET": "",
+    "GOOGLE_REDIRECT_URI": "http://localhost:4280/api/google/oauth/callback",
+
+    "TOKEN_ENCRYPTION_KEY": "generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
+    "CRON_SHARED_SECRET": "generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+  },
+  "Host": {
+    "CORS": "http://localhost:4280"
+  }
+}

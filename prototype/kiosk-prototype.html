@@ -1,0 +1,1320 @@
+<title>Family Dashboard — Kiosk Prototype</title>
+
+<style>
+  /* ---------------------------------------------------------------------
+     Tokens. Dark is the design's home ground (this lives on a kitchen wall
+     and is lit at night), but both themes are fully specified. The viewer's
+     toggle stamps data-theme on :root and must beat the media query.
+     --------------------------------------------------------------------- */
+  :root {
+    --ground: #12181f;
+    --panel: #1a222c;
+    --panel-2: #202a36;
+    --line: #27313d;
+    --ink: #e8edf2;
+    --ink-dim: #93a2b4;
+    --ink-faint: #61707f;
+
+    --amber: #f0a830;
+    --amber-soft: rgba(240, 168, 48, 0.14);
+
+    --pending: #7fa8d9;
+    --pending-soft: rgba(127, 168, 217, 0.14);
+    --approved: #57c98a;
+    --approved-soft: rgba(87, 201, 138, 0.14);
+    --overdue: #e8705f;
+    --overdue-soft: rgba(232, 112, 95, 0.14);
+
+    --shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+
+    --display: 'Arial Narrow', 'Roboto Condensed', 'Liberation Sans Narrow',
+      'Segoe UI', system-ui, sans-serif;
+    --body: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue',
+      system-ui, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --ground: #eef1f5;
+      --panel: #ffffff;
+      --panel-2: #f5f7fa;
+      --line: #dbe2ea;
+      --ink: #16202b;
+      --ink-dim: #566577;
+      --ink-faint: #8695a6;
+      --amber: #b8730c;
+      --amber-soft: rgba(184, 115, 12, 0.12);
+      --pending: #2f6fb5;
+      --pending-soft: rgba(47, 111, 181, 0.1);
+      --approved: #1f8a54;
+      --approved-soft: rgba(31, 138, 84, 0.1);
+      --overdue: #c4402e;
+      --overdue-soft: rgba(196, 64, 46, 0.1);
+      --shadow: 0 18px 44px rgba(20, 32, 45, 0.14);
+    }
+  }
+
+  :root[data-theme='light'] {
+    --ground: #eef1f5;
+    --panel: #ffffff;
+    --panel-2: #f5f7fa;
+    --line: #dbe2ea;
+    --ink: #16202b;
+    --ink-dim: #566577;
+    --ink-faint: #8695a6;
+    --amber: #b8730c;
+    --amber-soft: rgba(184, 115, 12, 0.12);
+    --pending: #2f6fb5;
+    --pending-soft: rgba(47, 111, 181, 0.1);
+    --approved: #1f8a54;
+    --approved-soft: rgba(31, 138, 84, 0.1);
+    --overdue: #c4402e;
+    --overdue-soft: rgba(196, 64, 46, 0.1);
+    --shadow: 0 18px 44px rgba(20, 32, 45, 0.14);
+  }
+
+  :root[data-theme='dark'] {
+    --ground: #12181f;
+    --panel: #1a222c;
+    --panel-2: #202a36;
+    --line: #27313d;
+    --ink: #e8edf2;
+    --ink-dim: #93a2b4;
+    --ink-faint: #61707f;
+    --amber: #f0a830;
+    --amber-soft: rgba(240, 168, 48, 0.14);
+    --pending: #7fa8d9;
+    --pending-soft: rgba(127, 168, 217, 0.14);
+    --approved: #57c98a;
+    --approved-soft: rgba(87, 201, 138, 0.14);
+    --overdue: #e8705f;
+    --overdue-soft: rgba(232, 112, 95, 0.14);
+    --shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 20px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  /* ---- page chrome (prototype framing, not part of the product) ---- */
+  .masthead { display: flex; flex-direction: column; gap: 10px; }
+
+  .eyebrow {
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 12px;
+    color: var(--amber);
+    margin: 0;
+  }
+
+  .masthead h1 {
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-size: clamp(30px, 5vw, 46px);
+    line-height: 1.02;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .masthead p {
+    margin: 0;
+    max-width: 64ch;
+    color: var(--ink-dim);
+    font-size: 15px;
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    padding-top: 4px;
+  }
+
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--panel);
+  }
+
+  .seg button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--ink-dim);
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 12px;
+    padding: 9px 18px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .seg button[aria-pressed='true'] { background: var(--amber); color: #12181f; }
+  .seg button:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+
+  .hint {
+    font-size: 13px;
+    color: var(--ink-faint);
+    font-style: italic;
+  }
+
+  /* ---- the device frame ---- */
+  .bezel {
+    background: #05080b;
+    border-radius: 18px;
+    padding: 14px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--line);
+  }
+  :root[data-theme='light'] .bezel { background: #253141; }
+
+  .screen {
+    background: var(--ground);
+    border-radius: 8px;
+    overflow: hidden;
+    container-type: inline-size;
+  }
+
+  /* Kiosk: fixed landscape, nothing scrolls. Phone: single scrolling column. */
+  .surface[data-surface='kiosk'] .screen { aspect-ratio: 16 / 10; }
+  .surface[data-surface='phone'] { max-width: 390px; margin: 0 auto; }
+  .surface[data-surface='phone'] .screen { aspect-ratio: 390 / 760; }
+
+  .app {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    font-size: clamp(11px, 1.35cqi, 17px);
+  }
+
+  /* ---- top bar ---- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1em;
+    padding: 1.1em 1.4em;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+
+  .brand {
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 1.05em;
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+  }
+  .brand .dot {
+    width: 0.5em; height: 0.5em; border-radius: 50%;
+    background: var(--approved);
+    box-shadow: 0 0 0 0.25em var(--approved-soft);
+  }
+
+  .clock {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.5em;
+    letter-spacing: 0.02em;
+  }
+  .clock .date {
+    display: block;
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.46em;
+    color: var(--ink-dim);
+  }
+
+  .whoami { display: flex; align-items: center; gap: 0.6em; }
+
+  .avatar {
+    width: 2.4em; height: 2.4em;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 1.15em;
+    border: 2px solid transparent;
+    background: var(--panel-2);
+    cursor: pointer;
+    transition: transform 0.12s, border-color 0.15s;
+    flex: none;
+    line-height: 1;
+  }
+  .avatar:hover { transform: translateY(-2px); }
+  .avatar:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .avatar[data-active='true'] { border-color: var(--amber); }
+
+  .session-chip {
+    display: inline-flex; align-items: center; gap: 0.5em;
+    background: var(--amber-soft);
+    color: var(--amber);
+    border: 1px solid var(--amber);
+    border-radius: 999px;
+    padding: 0.35em 0.85em;
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.78em;
+    white-space: nowrap;
+  }
+  .session-chip .countdown { font-family: var(--mono); letter-spacing: 0; }
+
+  /* ---- body grid ---- */
+  .board {
+    display: grid;
+    grid-template-columns: 1.05fr 1.5fr 1fr;
+    gap: 1px;
+    background: var(--line);
+    min-height: 0;
+  }
+
+  .col {
+    background: var(--ground);
+    padding: 1.1em 1.2em;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85em;
+    overflow: hidden;
+  }
+
+  .col h2 {
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.86em;
+    color: var(--ink-dim);
+    margin: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .col h2 .meta {
+    font-family: var(--mono);
+    letter-spacing: 0;
+    font-size: 0.92em;
+    color: var(--ink-faint);
+  }
+
+  .stack { display: flex; flex-direction: column; gap: 0.55em; min-height: 0; }
+
+  /* ---- events ---- */
+  .daygroup { display: flex; flex-direction: column; gap: 0.4em; }
+  .daylabel {
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.76em;
+    color: var(--ink-faint);
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.25em;
+  }
+
+  .event {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.7em;
+    align-items: baseline;
+    padding: 0.35em 0;
+  }
+  .event time {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.88em;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+  .event .what { display: flex; align-items: baseline; gap: 0.45em; min-width: 0; }
+  .event .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag {
+    width: 0.5em; height: 0.5em; border-radius: 2px; flex: none;
+    transform: translateY(-0.05em);
+  }
+
+  /* ---- tasks ---- */
+  .person-label {
+    display: flex; align-items: center; gap: 0.5em;
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.78em;
+    color: var(--ink-faint);
+    margin-top: 0.15em;
+  }
+
+  .task {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.75em;
+    width: 100%;
+    text-align: left;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--ink-faint);
+    border-radius: 6px;
+    padding: 0.6em 0.8em;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    min-height: 2.9em;
+    transition: background 0.15s, transform 0.1s, border-color 0.15s;
+  }
+  .task:hover:not(:disabled) { background: var(--panel-2); }
+  .task:active:not(:disabled) { transform: scale(0.99); }
+  .task:disabled { cursor: default; opacity: 0.72; }
+  .task:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  .task .box {
+    width: 1.5em; height: 1.5em;
+    border: 2px solid var(--ink-faint);
+    border-radius: 5px;
+    display: grid; place-items: center;
+    flex: none;
+    font-size: 0.95em;
+    line-height: 1;
+  }
+  .task .label { min-width: 0; }
+  .task .name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task .sub {
+    display: block;
+    font-size: 0.8em;
+    color: var(--ink-faint);
+    font-family: var(--mono);
+  }
+  .task .pts {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.05em;
+    color: var(--amber);
+    white-space: nowrap;
+  }
+
+  .task[data-state='pending'] {
+    border-left-color: var(--pending);
+    border-style: dashed;
+    background: var(--pending-soft);
+  }
+  .task[data-state='pending'] .box { border-color: var(--pending); color: var(--pending); }
+  .task[data-state='pending'] .pts { color: var(--pending); }
+
+  .task[data-state='approved'] { border-left-color: var(--approved); }
+  .task[data-state='approved'] .box {
+    border-color: var(--approved);
+    background: var(--approved);
+    color: #0b1a12;
+  }
+  .task[data-state='approved'] .name { text-decoration: line-through; color: var(--ink-dim); }
+  .task[data-state='approved'] .pts { color: var(--approved); }
+
+  .task[data-state='overdue'] { border-left-color: var(--overdue); }
+  .task[data-state='overdue'] .sub { color: var(--overdue); }
+
+  .task[data-locked='true'] { opacity: 0.45; cursor: not-allowed; }
+
+  /* ---- standings ---- */
+  .rank {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    align-items: center;
+    gap: 0.6em;
+    padding: 0.5em 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .rank:last-child { border-bottom: 0; }
+  .rank .pos {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    color: var(--ink-faint);
+    width: 1.4em;
+  }
+  .rank .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rank .score {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.35em;
+    color: var(--amber);
+  }
+  .rank .pend {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.62em;
+    color: var(--pending);
+    text-align: right;
+  }
+  .rank .streak {
+    font-family: var(--mono);
+    font-size: 0.78em;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+
+  .badges { display: flex; gap: 0.4em; flex-wrap: wrap; padding-top: 0.2em; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.35em;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 999px;
+    padding: 0.25em 0.6em;
+    font-size: 0.76em;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+  .badge[data-tier='gold'] { border-color: var(--amber); color: var(--amber); background: var(--amber-soft); }
+
+  /* ---- ticker ---- */
+  .ticker {
+    display: flex;
+    align-items: stretch;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+    overflow: hidden;
+  }
+  .ticker .bug {
+    display: flex; align-items: center; gap: 0.45em;
+    background: var(--amber);
+    color: #12181f;
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.8em;
+    padding: 0.7em 1em;
+    flex: none;
+  }
+  .ticker .bug .pulse {
+    width: 0.45em; height: 0.45em; border-radius: 50%;
+    background: #12181f;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+  .ticker .track {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent);
+  }
+  .ticker .run {
+    display: flex;
+    gap: 2.5em;
+    white-space: nowrap;
+    padding-left: 1.2em;
+    animation: marquee 42s linear infinite;
+  }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  .ticker .item { display: inline-flex; align-items: center; gap: 0.5em; font-size: 0.95em; }
+  .ticker .item .src {
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.72em;
+    padding: 0.15em 0.5em;
+    border-radius: 3px;
+    border: 1px solid var(--line);
+    color: var(--ink-faint);
+  }
+  .ticker .item .src[data-src='claude'] { color: var(--amber); border-color: var(--amber); }
+  .ticker .item .src[data-src='next'] { color: var(--pending); border-color: var(--pending); }
+
+  /* ---- keypad overlay ---- */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(5, 8, 11, 0.82);
+    display: grid;
+    place-items: center;
+    z-index: 20;
+  }
+  :root[data-theme='light'] .overlay { background: rgba(22, 32, 43, 0.55); }
+
+  .screen { position: relative; }
+
+  .keypad {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 1.4em;
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+    align-items: center;
+    box-shadow: var(--shadow);
+    max-width: 88%;
+  }
+  .keypad h3 {
+    margin: 0;
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 1em;
+    text-align: center;
+  }
+  .keypad .pips { display: flex; gap: 0.7em; }
+  .keypad .pip {
+    width: 0.85em; height: 0.85em;
+    border-radius: 50%;
+    border: 2px solid var(--ink-faint);
+  }
+  .keypad .pip[data-filled='true'] { background: var(--amber); border-color: var(--amber); }
+  .keypad .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.55em; }
+  .keypad button {
+    appearance: none;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 1.5em;
+    width: 3em; height: 2.3em;
+    cursor: pointer;
+    transition: background 0.12s, transform 0.08s;
+  }
+  .keypad button:hover { background: var(--line); }
+  .keypad button:active { transform: scale(0.96); }
+  .keypad button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .keypad .cancel {
+    background: none; border: 0; color: var(--ink-faint);
+    font-family: var(--display); text-transform: uppercase; letter-spacing: 0.12em;
+    font-size: 0.85em; width: auto; height: auto; padding: 0.3em;
+  }
+
+  /* ---- approval queue (parent) ---- */
+  .queue-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.7em;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--pending);
+    border-radius: 6px;
+    padding: 0.6em 0.75em;
+  }
+  .queue-item .approve {
+    appearance: none;
+    border: 1px solid var(--approved);
+    background: var(--approved-soft);
+    color: var(--approved);
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.8em;
+    padding: 0.45em 0.9em;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .queue-item .approve:hover { background: var(--approved); color: #0b1a12; }
+  .queue-item .approve:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  .empty {
+    color: var(--ink-faint);
+    font-size: 0.92em;
+    font-style: italic;
+    padding: 0.4em 0;
+  }
+
+  /* ---- achievement toast ---- */
+  .toast {
+    position: absolute;
+    left: 50%;
+    bottom: 4.2em;
+    transform: translateX(-50%) translateY(1.5em);
+    background: var(--panel);
+    border: 1px solid var(--amber);
+    border-radius: 10px;
+    padding: 0.9em 1.2em;
+    display: flex;
+    align-items: center;
+    gap: 0.9em;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s, transform 0.35s;
+    z-index: 15;
+    max-width: 80%;
+  }
+  .toast[data-show='true'] { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast .medal { font-size: 2.1em; line-height: 1; }
+  .toast .tier {
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.72em;
+    color: var(--amber);
+  }
+  .toast .aname {
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 1.15em;
+  }
+  .toast .flavor { font-size: 0.85em; color: var(--ink-dim); }
+
+  /* ---- phone surface overrides ---- */
+  .surface[data-surface='phone'] .board {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .surface[data-surface='phone'] .col { padding: 0.9em 1em; overflow: visible; }
+  .surface[data-surface='phone'] .app { font-size: 13px; }
+  .surface[data-surface='phone'] .clock { font-size: 1.15em; }
+  .surface[data-surface='phone'] .brand { font-size: 0.85em; }
+
+  /* ---- notes below the frame ---- */
+  .notes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(238px, 1fr));
+    gap: 14px;
+  }
+  .note {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .note h3 {
+    margin: 0 0 6px;
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 12px;
+    color: var(--amber);
+  }
+  .note p { margin: 0; font-size: 13.5px; color: var(--ink-dim); }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 14px;
+    font-size: 13px;
+    color: var(--ink-faint);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important; }
+    .ticker .run { animation: none; }
+    .ticker .track { overflow-x: auto; }
+  }
+
+  @media (max-width: 640px) {
+    .surface[data-surface='kiosk'] .screen { aspect-ratio: auto; height: 74vh; }
+    .board { overflow-y: auto; }
+    .col { overflow: visible; }
+  }
+</style>
+
+<div class="page">
+  <header class="masthead">
+    <p class="eyebrow">Prototype · Phase 0.5</p>
+    <h1>The family scoreboard</h1>
+    <p>
+      A clickable mock of the wall-tablet kiosk, built to settle the look and the core
+      loop before any of the real backend exists. Everything here is fake data held in
+      the page — but the interaction is the one the shipped app will have.
+      <strong>Tap a face to sign in (any four digits), tick off a chore, then switch to
+      Dad to approve it.</strong>
+    </p>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Device surface">
+        <button type="button" data-surface-btn="kiosk" aria-pressed="true">Wall tablet</button>
+        <button type="button" data-surface-btn="phone" aria-pressed="false">Phone</button>
+      </div>
+      <div class="seg" role="group" aria-label="View mode">
+        <button type="button" data-view-btn="board" aria-pressed="true">Family board</button>
+        <button type="button" data-view-btn="queue" aria-pressed="false">Approvals</button>
+      </div>
+      <button type="button" class="seg" id="reset" style="padding:9px 18px;font-family:var(--display);
+        text-transform:uppercase;letter-spacing:.12em;font-size:12px;color:var(--ink-dim);cursor:pointer;">
+        Reset demo
+      </button>
+    </div>
+    <p class="hint" id="hint">Nobody is signed in — the board still shows everything. That's the point of the kiosk.</p>
+  </header>
+
+  <div class="surface" data-surface="kiosk">
+    <div class="bezel">
+      <div class="screen">
+        <div class="app">
+          <!-- top bar -->
+          <div class="topbar">
+            <div class="brand"><span class="dot"></span> Schuenemeyer HQ</div>
+            <div class="clock">
+              <span id="clock-time">5:42</span>
+              <span class="date" id="clock-date">Saturday, August 1</span>
+            </div>
+            <div class="whoami" id="whoami"></div>
+          </div>
+
+          <!-- board -->
+          <div class="board" id="view-board">
+            <section class="col">
+              <h2>Up next <span class="meta" id="events-count"></span></h2>
+              <div class="stack" id="events"></div>
+            </section>
+
+            <section class="col">
+              <h2>Today's board <span class="meta" id="tasks-meta"></span></h2>
+              <div class="stack" id="tasks"></div>
+            </section>
+
+            <section class="col">
+              <h2>Standings <span class="meta">this week</span></h2>
+              <div class="stack" id="standings"></div>
+              <h2 style="margin-top:.4em;">Latest badges</h2>
+              <div class="badges" id="badges"></div>
+            </section>
+          </div>
+
+          <!-- approvals -->
+          <div class="board" id="view-queue" style="display:none;grid-template-columns:1fr;">
+            <section class="col">
+              <h2>Waiting on a parent <span class="meta" id="queue-count"></span></h2>
+              <div class="stack" id="queue"></div>
+              <p class="hint" style="margin-top:.6em;">
+                Task approvals and reward redemptions land in the same queue — one badge,
+                one screen, one habit.
+              </p>
+            </section>
+          </div>
+
+          <!-- ticker -->
+          <div class="ticker">
+            <div class="bug"><span class="pulse"></span> Live</div>
+            <div class="track"><div class="run" id="ticker-run"></div></div>
+          </div>
+
+          <!-- achievement toast -->
+          <div class="toast" id="toast">
+            <div class="medal" id="toast-medal">🥈</div>
+            <div>
+              <div class="tier" id="toast-tier">Silver unlocked</div>
+              <div class="aname" id="toast-name">Dishwasher Destroyer</div>
+              <div class="flavor" id="toast-flavor">Twenty-five loads cleared without being asked twice.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <h3>Pending never lies</h3>
+      <p>
+        A tapped chore shows a dashed border and a blue “pending” figure. It is deliberately
+        never folded into the ranked total until a parent approves it.
+      </p>
+    </div>
+    <div class="note">
+      <h3>Read free, write gated</h3>
+      <p>
+        The wall display renders forever with nobody signed in. Only <em>changing</em>
+        something costs four taps, and the session drops back to ambient after ten minutes.
+      </p>
+    </div>
+    <div class="note">
+      <h3>Two labels on the ticker</h3>
+      <p>
+        <span style="color:var(--amber)">Claude</span> marks generated commentary,
+        <span style="color:var(--pending)">Next</span> marks upcoming events. Unlabelled
+        items are plain facts — the feed still works with the API switched off.
+      </p>
+    </div>
+  </div>
+
+  <footer>
+    Prototype only — fake data, no backend, no Claude calls. Source lives at
+    <code>prototype/kiosk-prototype.html</code>; the build it previews is Phases 0–9 of the
+    implementation plan.
+  </footer>
+</div>
+
+<script>
+  (function () {
+    'use strict';
+
+    // ---- seed data -------------------------------------------------------
+    var MEMBERS = [
+      { id: 'lee', name: 'Dad', emoji: '🧔', role: 'parent', points: 0, pending: 0, streak: 0 },
+      { id: 'dana', name: 'Mom', emoji: '👩', role: 'parent', points: 0, pending: 0, streak: 0 },
+      { id: 'maya', name: 'Maya', emoji: '🦊', role: 'child', points: 340, pending: 0, streak: 6 },
+      { id: 'theo', name: 'Theo', emoji: '🐢', role: 'child', points: 295, pending: 0, streak: 3 },
+      { id: 'iris', name: 'Iris', emoji: '🐙', role: 'child', points: 180, pending: 0, streak: 11 }
+    ];
+
+    var TASKS = [
+      { id: 't1', who: 'maya', title: 'Unload the dishwasher', due: 'by 6:00pm', pts: 15, state: 'open' },
+      { id: 't2', who: 'maya', title: 'Practice piano — 20 min', due: 'by 8:00pm', pts: 20, state: 'open' },
+      { id: 't3', who: 'theo', title: 'Take the trash to the curb', due: 'by 7:00pm', pts: 15, state: 'open', bonus: 2 },
+      { id: 't4', who: 'theo', title: 'Math homework', due: 'overdue since 4:00pm', pts: 25, state: 'overdue' },
+      { id: 't5', who: 'iris', title: 'Feed the dog', due: 'by 5:30pm', pts: 10, state: 'approved' },
+      { id: 't6', who: 'iris', title: 'Put away the LEGO', due: 'by 7:30pm', pts: 10, state: 'open' },
+      { id: 't7', who: 'lee', title: 'Start a laundry load', due: 'by 9:00pm', pts: 10, state: 'open' }
+    ];
+
+    var EVENTS = [
+      { day: 'Today · Sat 1 Aug', time: '5:30pm', title: 'Soccer practice — Theo', color: 'var(--approved)' },
+      { day: 'Today · Sat 1 Aug', time: '7:30pm', title: 'Game night', color: 'var(--amber)' },
+      { day: 'Tomorrow · Sun 2 Aug', time: '9:15am', title: 'Swim lessons — Iris', color: 'var(--pending)' },
+      { day: 'Tomorrow · Sun 2 Aug', time: '2:00pm', title: 'Grandma visits', color: 'var(--overdue)' },
+      { day: 'Mon 3 Aug', time: '8:00am', title: 'First day back at school', color: 'var(--pending)' },
+      { day: 'Mon 3 Aug', time: '4:45pm', title: 'Dentist — Maya', color: 'var(--overdue)' }
+    ];
+
+    var BADGES = [
+      { icon: '🥇', label: 'Streak Sovereign · Iris', tier: 'gold' },
+      { icon: '🥈', label: 'Trash Tactician · Theo', tier: 'silver' },
+      { icon: '🥉', label: 'Early Riser · Maya', tier: 'bronze' }
+    ];
+
+    var FEED = [
+      { src: 'claude', text: 'Iris has fed the dog eleven days running. The dog has filed a formal thank-you.' },
+      { src: 'fact', text: 'Iris cleared “Feed the dog” · +10' },
+      { src: 'next', text: 'Soccer practice · today 5:30pm' },
+      { src: 'claude', text: 'Theo’s trash streak is now load-bearing infrastructure for this household.' },
+      { src: 'fact', text: 'Maya redeemed “Pick Friday dinner” · −120' },
+      { src: 'next', text: 'Math homework · overdue since 4:00pm' },
+      { src: 'claude', text: 'Somebody said they’d start the laundry “in a minute.” That was 47 minutes ago.' }
+    ];
+
+    // ---- state -----------------------------------------------------------
+    var state = null;
+    function reset() {
+      state = {
+        members: MEMBERS.map(function (m) { return Object.assign({}, m); }),
+        tasks: TASKS.map(function (t) { return Object.assign({}, t); }),
+        feed: FEED.slice(),
+        sessionId: null,
+        secondsLeft: 0,
+        keypadFor: null,
+        keypadDigits: '',
+        surface: state ? state.surface : 'kiosk',
+        view: 'board'
+      };
+    }
+
+    var $ = function (id) { return document.getElementById(id); };
+    var byId = function (list, id) {
+      for (var i = 0; i < list.length; i++) { if (list[i].id === id) return list[i]; }
+      return null;
+    };
+    var esc = function (s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    };
+
+    // ---- rendering -------------------------------------------------------
+    function renderWhoami() {
+      var el = $('whoami');
+      el.innerHTML = '';
+      var me = state.sessionId ? byId(state.members, state.sessionId) : null;
+
+      if (me) {
+        var chip = document.createElement('span');
+        chip.className = 'session-chip';
+        var mins = Math.floor(state.secondsLeft / 60);
+        var secs = state.secondsLeft % 60;
+        chip.innerHTML = esc(me.name) + ' <span class="countdown">' + mins + ':' +
+          (secs < 10 ? '0' : '') + secs + '</span>';
+        el.appendChild(chip);
+
+        var out = document.createElement('button');
+        out.className = 'avatar';
+        out.type = 'button';
+        out.textContent = '✕';
+        out.title = 'Done';
+        out.setAttribute('aria-label', 'Sign out');
+        out.onclick = function () { state.sessionId = null; render(); };
+        el.appendChild(out);
+        return;
+      }
+
+      state.members.forEach(function (m) {
+        var b = document.createElement('button');
+        b.className = 'avatar';
+        b.type = 'button';
+        b.textContent = m.emoji;
+        b.title = m.name;
+        b.setAttribute('aria-label', 'Sign in as ' + m.name);
+        b.onclick = function () { openKeypad(m.id); };
+        el.appendChild(b);
+      });
+    }
+
+    function renderEvents() {
+      var host = $('events');
+      host.innerHTML = '';
+      var days = [];
+      EVENTS.forEach(function (e) { if (days.indexOf(e.day) === -1) days.push(e.day); });
+
+      days.forEach(function (day) {
+        var g = document.createElement('div');
+        g.className = 'daygroup';
+        var l = document.createElement('div');
+        l.className = 'daylabel';
+        l.textContent = day;
+        g.appendChild(l);
+
+        EVENTS.filter(function (e) { return e.day === day; }).forEach(function (e) {
+          var row = document.createElement('div');
+          row.className = 'event';
+          row.innerHTML =
+            '<time>' + esc(e.time) + '</time>' +
+            '<span class="what"><span class="tag" style="background:' + e.color + '"></span>' +
+            '<span class="title">' + esc(e.title) + '</span></span>';
+          g.appendChild(row);
+        });
+        host.appendChild(g);
+      });
+      $('events-count').textContent = EVENTS.length + ' scheduled';
+    }
+
+    function renderTasks() {
+      var host = $('tasks');
+      host.innerHTML = '';
+      var order = ['maya', 'theo', 'iris', 'lee'];
+      var openCount = 0;
+
+      order.forEach(function (who) {
+        var mine = state.tasks.filter(function (t) { return t.who === who; });
+        if (!mine.length) return;
+        var m = byId(state.members, who);
+
+        var lab = document.createElement('div');
+        lab.className = 'person-label';
+        lab.innerHTML = '<span>' + m.emoji + '</span> ' + esc(m.name);
+        host.appendChild(lab);
+
+        mine.forEach(function (t) {
+          if (t.state === 'open' || t.state === 'overdue') openCount++;
+          var locked = state.sessionId !== t.who;
+          var b = document.createElement('button');
+          b.className = 'task';
+          b.type = 'button';
+          b.dataset.state = t.state;
+          b.dataset.locked = String(locked && t.state !== 'approved' && t.state !== 'pending');
+          b.disabled = t.state === 'pending' || t.state === 'approved' || locked;
+
+          var mark = t.state === 'approved' ? '✓' : t.state === 'pending' ? '⏳' : '';
+          var sub = t.state === 'pending' ? 'waiting on a parent'
+            : t.state === 'approved' ? 'approved'
+            : t.due;
+          var pts = (t.state === 'pending' ? '+' : '') + t.pts +
+            (t.bonus ? ' ×' + t.bonus : '');
+
+          b.innerHTML =
+            '<span class="box">' + mark + '</span>' +
+            '<span class="label"><span class="name">' + esc(t.title) + '</span>' +
+            '<span class="sub">' + esc(sub) + '</span></span>' +
+            '<span class="pts">' + esc(pts) + '</span>';
+
+          b.onclick = function () { completeTask(t.id); };
+          host.appendChild(b);
+        });
+      });
+
+      $('tasks-meta').textContent = openCount + ' left';
+    }
+
+    function renderStandings() {
+      var host = $('standings');
+      host.innerHTML = '';
+      var kids = state.members.filter(function (m) { return m.role === 'child'; })
+        .slice().sort(function (a, b) { return b.points - a.points; });
+
+      kids.forEach(function (m, i) {
+        var row = document.createElement('div');
+        row.className = 'rank';
+        row.innerHTML =
+          '<span class="pos">' + (i + 1) + '</span>' +
+          '<span>' + m.emoji + '</span>' +
+          '<span class="who">' + esc(m.name) +
+          '<span class="streak" style="display:block">🔥 ' + m.streak + '-day streak</span></span>' +
+          '<span><span class="score">' + m.points + '</span>' +
+          (m.pending ? '<span class="pend">+' + m.pending + ' pending</span>' : '') + '</span>';
+        host.appendChild(row);
+      });
+    }
+
+    function renderBadges() {
+      var host = $('badges');
+      host.innerHTML = '';
+      BADGES.forEach(function (b) {
+        var el = document.createElement('span');
+        el.className = 'badge';
+        el.dataset.tier = b.tier;
+        el.innerHTML = b.icon + ' ' + esc(b.label);
+        host.appendChild(el);
+      });
+    }
+
+    function renderQueue() {
+      var host = $('queue');
+      host.innerHTML = '';
+      var pending = state.tasks.filter(function (t) { return t.state === 'pending'; });
+      $('queue-count').textContent = pending.length ? pending.length + ' waiting' : 'all clear';
+
+      if (!pending.length) {
+        var p = document.createElement('p');
+        p.className = 'empty';
+        p.textContent = 'Nothing waiting. Tick a chore off on the family board first.';
+        host.appendChild(p);
+        return;
+      }
+
+      var me = state.sessionId ? byId(state.members, state.sessionId) : null;
+      var isParent = me && me.role === 'parent';
+
+      pending.forEach(function (t) {
+        var m = byId(state.members, t.who);
+        var row = document.createElement('div');
+        row.className = 'queue-item';
+        row.innerHTML =
+          '<span style="font-size:1.6em">' + m.emoji + '</span>' +
+          '<span><strong>' + esc(m.name) + '</strong> — ' + esc(t.title) +
+          '<span class="sub" style="display:block;font-family:var(--mono);font-size:.8em;color:var(--ink-faint)">' +
+          '+' + t.pts + ' points · tapped just now</span></span>';
+
+        var btn = document.createElement('button');
+        btn.className = 'approve';
+        btn.type = 'button';
+        if (isParent) {
+          btn.textContent = 'Approve';
+          btn.onclick = function () { approveTask(t.id); };
+        } else {
+          btn.textContent = 'Parent only';
+          btn.disabled = true;
+          btn.style.opacity = '.45';
+          btn.style.cursor = 'not-allowed';
+        }
+        row.appendChild(btn);
+        host.appendChild(row);
+      });
+    }
+
+    function renderTicker() {
+      var run = $('ticker-run');
+      run.innerHTML = '';
+      // Duplicated once so the -50% marquee translate loops seamlessly.
+      for (var pass = 0; pass < 2; pass++) {
+        state.feed.forEach(function (f) {
+          var el = document.createElement('span');
+          el.className = 'item';
+          var label = f.src === 'claude' ? 'Claude' : f.src === 'next' ? 'Next' : '';
+          el.innerHTML = (label ? '<span class="src" data-src="' + f.src + '">' + label + '</span>' : '') +
+            '<span>' + esc(f.text) + '</span>';
+          run.appendChild(el);
+        });
+      }
+    }
+
+    function renderKeypad() {
+      var existing = document.querySelector('.overlay');
+      if (existing) existing.remove();
+      if (!state.keypadFor) return;
+
+      var m = byId(state.members, state.keypadFor);
+      var ov = document.createElement('div');
+      ov.className = 'overlay';
+
+      var pips = '';
+      for (var i = 0; i < 4; i++) {
+        pips += '<span class="pip" data-filled="' + (i < state.keypadDigits.length) + '"></span>';
+      }
+
+      var keys = '';
+      [1, 2, 3, 4, 5, 6, 7, 8, 9].forEach(function (n) {
+        keys += '<button type="button" data-key="' + n + '">' + n + '</button>';
+      });
+      keys += '<button type="button" data-key="del">⌫</button>';
+      keys += '<button type="button" data-key="0">0</button>';
+      keys += '<span></span>';
+
+      ov.innerHTML =
+        '<div class="keypad" role="dialog" aria-label="Enter PIN">' +
+        '<h3>' + m.emoji + ' &nbsp;' + esc(m.name) + '</h3>' +
+        '<div class="pips">' + pips + '</div>' +
+        '<div class="grid">' + keys + '</div>' +
+        '<button type="button" class="cancel">Cancel</button>' +
+        '</div>';
+
+      ov.addEventListener('click', function (ev) {
+        var k = ev.target.closest('[data-key]');
+        if (k) {
+          var v = k.getAttribute('data-key');
+          if (v === 'del') state.keypadDigits = state.keypadDigits.slice(0, -1);
+          else if (state.keypadDigits.length < 4) state.keypadDigits += v;
+
+          if (state.keypadDigits.length === 4) {
+            // Any 4 digits work in the prototype — the real thing verifies
+            // a scrypt hash server-side and locks out after 5 failures.
+            state.sessionId = state.keypadFor;
+            state.secondsLeft = 600;
+            state.keypadFor = null;
+            state.keypadDigits = '';
+          }
+          render();
+          return;
+        }
+        if (ev.target.closest('.cancel') || ev.target === ov) {
+          state.keypadFor = null;
+          state.keypadDigits = '';
+          render();
+        }
+      });
+
+      document.querySelector('.screen').appendChild(ov);
+    }
+
+    function renderHint() {
+      var me = state.sessionId ? byId(state.members, state.sessionId) : null;
+      var pending = state.tasks.filter(function (t) { return t.state === 'pending'; }).length;
+      var msg;
+      if (!me) {
+        msg = pending
+          ? pending + ' chore' + (pending > 1 ? 's are' : ' is') + ' waiting on a parent — sign in as Dad and switch to Approvals.'
+          : 'Nobody is signed in — the board still shows everything. That’s the point of the kiosk.';
+      } else if (me.role === 'parent') {
+        msg = 'Signed in as ' + me.name + '. Head to Approvals to clear the queue.';
+      } else {
+        msg = 'Signed in as ' + me.name + ' for 10 minutes — only ' + me.name + '’s chores are tappable.';
+      }
+      $('hint').textContent = msg;
+    }
+
+    function render() {
+      renderWhoami();
+      renderEvents();
+      renderTasks();
+      renderStandings();
+      renderBadges();
+      renderQueue();
+      renderTicker();
+      renderKeypad();
+      renderHint();
+
+      $('view-board').style.display = state.view === 'board' ? '' : 'none';
+      $('view-queue').style.display = state.view === 'queue' ? '' : 'none';
+      document.querySelector('.surface').dataset.surface = state.surface;
+
+      document.querySelectorAll('[data-surface-btn]').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.surfaceBtn === state.surface));
+      });
+      document.querySelectorAll('[data-view-btn]').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.viewBtn === state.view));
+      });
+    }
+
+    // ---- actions ---------------------------------------------------------
+    function openKeypad(id) {
+      state.keypadFor = id;
+      state.keypadDigits = '';
+      render();
+    }
+
+    function completeTask(id) {
+      var t = byId(state.tasks, id);
+      if (!t || t.state === 'pending' || t.state === 'approved') return;
+      if (state.sessionId !== t.who) return;
+
+      t.state = 'pending';
+      var m = byId(state.members, t.who);
+      m.pending += t.pts;
+      state.feed.unshift({ src: 'fact', text: m.name + ' ticked off “' + t.title + '” · awaiting approval' });
+      render();
+    }
+
+    function approveTask(id) {
+      var t = byId(state.tasks, id);
+      if (!t || t.state !== 'pending') return;
+
+      t.state = 'approved';
+      var m = byId(state.members, t.who);
+      var award = t.pts * (t.bonus || 1);
+      m.pending -= t.pts;
+      m.points += award;
+
+      state.feed.unshift({
+        src: 'claude',
+        text: m.name + ' cleared “' + t.title + '” for ' + award + '. The chore never stood a chance.'
+      });
+      render();
+      showToast(m, t);
+    }
+
+    var toastTimer = null;
+    function showToast(member, task) {
+      var el = $('toast');
+      $('toast-medal').textContent = '🥈';
+      $('toast-tier').textContent = 'Silver unlocked · ' + member.name;
+      $('toast-name').textContent = 'Dishwasher Destroyer';
+      $('toast-flavor').textContent =
+        'Generated by Claude, filtered before it ever reached this screen.';
+      el.dataset.show = 'true';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.dataset.show = 'false'; }, 4200);
+    }
+
+    // ---- clock + session countdown --------------------------------------
+    function tick() {
+      var now = new Date();
+      var h = now.getHours() % 12 || 12;
+      var mm = String(now.getMinutes()).padStart(2, '0');
+      $('clock-time').textContent = h + ':' + mm;
+      $('clock-date').textContent = now.toLocaleDateString(undefined, {
+        weekday: 'long', month: 'long', day: 'numeric'
+      });
+
+      if (state.sessionId) {
+        state.secondsLeft--;
+        if (state.secondsLeft <= 0) { state.sessionId = null; render(); }
+        else renderWhoami();
+      }
+    }
+
+    // ---- wiring ----------------------------------------------------------
+    document.addEventListener('click', function (ev) {
+      var s = ev.target.closest('[data-surface-btn]');
+      if (s) { state.surface = s.dataset.surfaceBtn; render(); return; }
+      var v = ev.target.closest('[data-view-btn]');
+      if (v) { state.view = v.dataset.viewBtn; render(); return; }
+      if (ev.target.closest('#reset')) { reset(); render(); }
+    });
+
+    reset();
+    render();
+    setInterval(tick, 1000);
+    tick();
+  })();
+</script>

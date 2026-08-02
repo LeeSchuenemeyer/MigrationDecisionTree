@@ -1,0 +1,13 @@
+{
+  "$schema": "https://aka.ms/azure/static-web-apps-cli/schema",
+  "configurations": {
+    "family-dashboard": {
+      "appLocation": "web",
+      "apiLocation": "api",
+      "outputLocation": "dist",
+      "swaConfigLocation": "web/public",
+      "appDevserverUrl": "http://localhost:5173",
+      "apiDevserverUrl": "http://localhost:7071"
+    }
+  }
+}

@@ -1,0 +1,119 @@
+name: CI
+
+# Runs on EVERY branch. This matters: the SWA deploy workflow only triggers on
+# `main`, so without this there is no feedback loop at all while working on a
+# feature branch.
+
+on:
+  push:
+    branches-ignore: []
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Install
+        run: |
+          npm ci
+          npm ci --prefix web
+          npm ci --prefix api
+
+      # shared/ is pure functions encoding rules that are easy to get subtly
+      # wrong and painful to debug in production — recurrence across DST, streak
+      # state transitions, key round-trips, the PG-13 filter. This is where
+      # nearly all the test value lives.
+      - name: Unit tests (shared/)
+        run: npm test
+
+      # Integration tests run against Azurite rather than mocks. The design
+      # leans on real storage semantics — deterministic row keys, 409 on
+      # duplicate create, ETag conflicts — and a mocked table client would
+      # agree with whatever we assumed and catch none of it.
+      #
+      # Started here rather than as a service container so it matches local
+      # development exactly, and so the binding behavior is ours to control.
+      - name: Start Azurite
+        run: |
+          npx --prefix api azurite \
+            --silent --location /tmp/azurite --skipApiVersionCheck \
+            --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 &
+          for i in $(seq 1 30); do
+            if nc -z 127.0.0.1 10002; then echo "azurite up"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::Azurite did not start within 30s"; exit 1
+
+      - name: Integration tests (api/ against Azurite)
+        run: npm test --prefix api
+
+      - name: Typecheck shared/
+        run: npm run typecheck
+
+      - name: Typecheck web
+        run: npm run typecheck --prefix web
+
+      - name: Typecheck api
+        run: npm run typecheck --prefix api
+
+      - name: Build web
+        run: npm run build --prefix web
+
+      # The deploy hands SWA the already-built web/dist as app_location, and
+      # SWA reads staticwebapp.config.json only from inside that artifact. If
+      # it goes missing, platform.apiRuntime goes with it and the deploy fails
+      # with the distinctly unhelpful "Function language info isn't provided".
+      - name: Assert SWA config ships inside the app artifact
+        run: |
+          test -f web/dist/staticwebapp.config.json \
+            || { echo "::error::web/dist/staticwebapp.config.json missing — it must live in web/public/"; exit 1; }
+          node -e "
+            const c = require('./web/dist/staticwebapp.config.json');
+            if (!c.platform || !c.platform.apiRuntime) {
+              console.error('::error::platform.apiRuntime missing from staticwebapp.config.json');
+              process.exit(1);
+            }
+            console.log('apiRuntime =', c.platform.apiRuntime);
+          "
+
+      - name: Build api
+        run: npm run build --prefix api
+
+  # Mirrors the deploy job exactly: installs ONLY api/, with a bare repo root.
+  #
+  # The `verify` job above installs root dev-tooling dependencies, which can
+  # silently satisfy a bare import inside shared/ and hide a resolution bug that
+  # then breaks the deploy. That is precisely how the first Phase 0 deploy
+  # failed. This job keeps the root bare so the failure surfaces here instead.
+  api-bundle-isolation:
+    runs-on: ubuntu-latest
+    name: api bundle resolves without root deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install api only
+        run: npm ci --prefix api
+
+      - name: Assert the repo root is bare
+        run: |
+          if [ -d node_modules ]; then
+            echo "::error::Repo root has node_modules; this job must run with a bare root to be meaningful."
+            exit 1
+          fi
+
+      - name: Build api
+        run: npm run build --prefix api

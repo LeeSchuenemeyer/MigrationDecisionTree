@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#12181f" />
+    <title>Family Dashboard</title>
+    <script>
+      // Surface detection runs before first paint so the kiosk never flashes the
+      // compact layout. Priority: an explicit ?kiosk= flag (persisted), then the
+      // device-shape heuristic. The enrolled kiosk device token, once fetched,
+      // overrides both — see src/lib/surface.ts.
+      (function () {
+        try {
+          var params = new URLSearchParams(location.search);
+          if (params.has('kiosk')) {
+            localStorage.setItem('fd.kiosk', params.get('kiosk') === '0' ? '0' : '1');
+          }
+          var forced = localStorage.getItem('fd.kiosk');
+          var isKiosk =
+            forced === '1' ||
+            (forced !== '0' &&
+              window.matchMedia(
+                '(min-width: 1024px) and (pointer: coarse) and (orientation: landscape)'
+              ).matches);
+          document.documentElement.dataset.surface = isKiosk ? 'kiosk' : 'compact';
+        } catch (e) {
+          document.documentElement.dataset.surface = 'compact';
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

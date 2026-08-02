@@ -1,0 +1,124 @@
+@import 'tailwindcss';
+
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   Carried over 1:1 from prototype/kiosk-prototype.html so the shipped app and
+   the visual reference cannot drift. Identity is "kitchen scoreboard": a deep
+   slate ground because this is lit on a wall at night, trophy amber reserved
+   strictly for points and achievements, and a separate semantic set for state
+   so status reads across the room rather than up close.
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-ground: #12181f;
+  --color-panel: #1a222c;
+  --color-panel-2: #202a36;
+  --color-line: #27313d;
+  --color-ink: #e8edf2;
+  --color-ink-dim: #93a2b4;
+  --color-ink-faint: #61707f;
+
+  /* Accent — points and achievements only. Never used for chrome. */
+  --color-brand: #f0a830;
+
+  /* Semantic state. Deliberately distinct from the accent. */
+  --color-pending: #7fa8d9;
+  --color-approved: #57c98a;
+  --color-overdue: #e8705f;
+
+  --font-display: 'Arial Narrow', 'Roboto Condensed', 'Liberation Sans Narrow', 'Segoe UI',
+    system-ui, sans-serif;
+  --font-body: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui,
+    sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Minimum touch targets. 44px is the accessibility floor; the kiosk is
+     operated at arm's length across a room, so it gets a much larger one. */
+  --spacing-touch: 2.75rem;
+  --spacing-touch-kiosk: 4.5rem;
+}
+
+/* Light theme. The kiosk lives in dark, but phones and laptops are first-class. */
+@media (prefers-color-scheme: light) {
+  @theme {
+    --color-ground: #eef1f5;
+    --color-panel: #ffffff;
+    --color-panel-2: #f5f7fa;
+    --color-line: #dbe2ea;
+    --color-ink: #16202b;
+    --color-ink-dim: #566577;
+    --color-ink-faint: #8695a6;
+    --color-brand: #b8730c;
+    --color-pending: #2f6fb5;
+    --color-approved: #1f8a54;
+    --color-overdue: #c4402e;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Surface variant.
+
+   One line that lets every shared leaf component scale in place:
+     class="text-base kiosk:text-3xl min-h-touch kiosk:min-h-touch-kiosk"
+   The information architecture still differs per surface — that is handled by
+   swapping the shell (KioskShell / MobileShell / DesktopShell), not here.
+   --------------------------------------------------------------------------- */
+@custom-variant kiosk (&:where([data-surface='kiosk'] *));
+
+/* --------------------------------------------------------------------------- */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Kiosk hardening. These are correctness requirements for an unattended wall
+   display, not polish — see the Phase 8 notes in the plan. */
+html[data-surface='kiosk'],
+html[data-surface='kiosk'] body {
+  /* Kills the 300ms tap delay and long-press text selection. */
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  /* No rubber-banding or pull-to-refresh on a fixed display. */
+  overscroll-behavior: none;
+  overflow: hidden;
+}
+
+/* Text the user may legitimately want to select stays selectable. */
+[data-selectable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Every interactive element gets a visible keyboard focus state. */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* Night dimming for the wall tablet, toggled by the app after 22:00 local. */
+html[data-night='true'] body {
+  filter: brightness(0.55);
+  transition: filter 1.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

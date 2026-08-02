@@ -1,0 +1,27 @@
+{
+  "platform": {
+    "apiRuntime": "node:20"
+  },
+  "trailingSlash": "auto",
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/api/*", "/legacy/*", "/assets/*", "*.{png,svg,ico,webp,woff2,json}"]
+  },
+  "routes": [
+    {
+      "route": "/default.html",
+      "redirect": "/legacy/decision-matrix.html",
+      "statusCode": 301
+    },
+    { "route": "/api/cron/tick", "methods": ["POST"] },
+    { "route": "/api/google/webhook", "methods": ["POST"] }
+  ],
+  "responseOverrides": {
+    "404": { "rewrite": "/index.html" }
+  },
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  }
+}
