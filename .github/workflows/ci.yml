@@ -48,3 +48,34 @@ jobs:
 
       - name: Build api
         run: npm run build --prefix api
+
+  # Mirrors the deploy job exactly: installs ONLY api/, with a bare repo root.
+  #
+  # The `verify` job above installs root dev-tooling dependencies, which can
+  # silently satisfy a bare import inside shared/ and hide a resolution bug that
+  # then breaks the deploy. That is precisely how the first Phase 0 deploy
+  # failed. This job keeps the root bare so the failure surfaces here instead.
+  api-bundle-isolation:
+    runs-on: ubuntu-latest
+    name: api bundle resolves without root deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install api only
+        run: npm ci --prefix api
+
+      - name: Assert the repo root is bare
+        run: |
+          if [ -d node_modules ]; then
+            echo "::error::Repo root has node_modules; this job must run with a bare root to be meaningful."
+            exit 1
+          fi
+
+      - name: Build api
+        run: npm run build --prefix api

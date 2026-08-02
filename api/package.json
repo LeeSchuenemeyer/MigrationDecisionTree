@@ -10,8 +10,8 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --external:@azure/functions --outfile=dist/index.js --sourcemap",
-    "watch": "npm run build -- --watch",
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
     "typecheck": "tsc --noEmit",
     "start": "npm run build && func start",
     "seed": "tsx scripts/seed.ts"
@@ -25,7 +25,6 @@
     "@types/luxon": "^3.7.3",
     "@types/node": "^26.1.2",
     "esbuild": "^0.28.1",
-    "google-auth-library": "^11.0.0",
     "luxon": "^3.7.2",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",

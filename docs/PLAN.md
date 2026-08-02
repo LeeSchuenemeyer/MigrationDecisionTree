@@ -330,6 +330,13 @@ in `conflictSnapshotJson`, set `syncState='conflict'`, and write a Feed item wit
 "actually, use mine." Do **not** build field-level three-way merge — weeks of work for
 something that happens a few times a year and a human resolves in five seconds.
 
+**Dependency note (found in Phase 0):** `google-auth-library@11` declares `node >=22`,
+while the SWA runtime is pinned to `node:20`. It was removed from `api/` in Phase 0 since
+nothing imported it yet. Re-add it here pinned to a node-20-compatible major, or bump
+`platform.apiRuntime` to `node:22` first if SWA supports it — decide deliberately rather
+than inheriting a silent engine mismatch. Several transitive `@azure/core-*` packages
+already warn the same way under `@azure/data-tables` (which itself declares `node >=20`).
+
 **Scoped out (stated, not discovered in week five):** the dashboard creates/edits/deletes
 single events and individual instances of Google-originated series; **series-level editing
 deep-links to Google Calendar.** Pull with `singleEvents=true` so recurring events arrive
