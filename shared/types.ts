@@ -7,6 +7,8 @@
  * what crosses the wire and deliberately never expose key structure.
  */
 
+import type { AssignMode, Recurrence } from './recurrence.js';
+
 export type Role = 'parent' | 'child';
 export type DeviceKind = 'kiosk' | 'personal';
 
@@ -157,5 +159,164 @@ export interface FeedItem {
   points: number | null;
   commentary: string | null;
   commentarySource: 'claude' | 'fallback' | null;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+
+
+export type TaskStatus = 'open' | 'pending' | 'approved' | 'rejected' | 'expired' | 'skipped';
+
+export interface TaskDefEntity {
+  title: string;
+  description: string | null;
+  points: number;
+  assignMode: AssignMode;
+  assigneeMemberId: string | null;
+  /** JSON array of member ids, for assignMode 'rotate'. */
+  rotationOrderJson: string;
+  rotationIndex: number;
+  /** JSON-encoded Recurrence. */
+  recurrenceJson: string;
+  /** Wall-clock time the chore is due, HH:mm. Null means end of day. */
+  dueTimeLocal: string | null;
+  requiresApproval: boolean;
+  category: string | null;
+  icon: string | null;
+  active: boolean;
+  /** Last local date materialized for this definition. */
+  materializedThrough: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface TaskDef {
+  id: string;
+  title: string;
+  description: string | null;
+  points: number;
+  assignMode: AssignMode;
+  assigneeMemberId: string | null;
+  rotationOrder: string[];
+  recurrence: Recurrence;
+  recurrenceLabel: string;
+  dueTimeLocal: string | null;
+  requiresApproval: boolean;
+  category: string | null;
+  icon: string | null;
+  active: boolean;
+}
+
+export interface TaskInstanceEntity {
+  taskDefId: string;
+  /** Denormalized so the board renders from one query with no fan-out. */
+  title: string;
+  icon: string | null;
+  /** Snapshotted at materialization — editing a def must never retroactively
+   *  change what an already-completed chore was worth. */
+  basePoints: number;
+  /** Surprise double-points and similar. 1 = none. */
+  multiplier: number;
+  bonusReason: string | null;
+  dueDateLocal: string;
+  dueTimeLocal: string | null;
+  assignedMemberId: string;
+  assignedMemberName: string | null;
+  status: TaskStatus;
+  completedAt: string | null;
+  completedBy: string | null;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  /** Set once points land, and what makes approval idempotent. */
+  ledgerEntryId: string | null;
+  awardedPoints: number | null;
+  note: string | null;
+}
+
+export interface TaskInstance {
+  id: string;
+  taskDefId: string;
+  title: string;
+  icon: string | null;
+  basePoints: number;
+  multiplier: number;
+  bonusReason: string | null;
+  dueDateLocal: string;
+  dueTimeLocal: string | null;
+  assignedMemberId: string;
+  assignedMemberName: string | null;
+  status: TaskStatus;
+  awardedPoints: number | null;
+  /** True when the due time has passed and it is still open. */
+  overdue: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Approval queue — task approvals AND reward redemptions in one place, so a
+// parent gets one badge, one screen, one habit.
+// ---------------------------------------------------------------------------
+
+export type QueueItemKind = 'task_approval' | 'redemption';
+
+export interface ActionQueueEntity {
+  kind: QueueItemKind;
+  refPartitionKey: string;
+  refRowKey: string;
+  memberId: string;
+  memberName: string;
+  memberAvatar: string;
+  title: string;
+  points: number;
+  dueDateLocal: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface QueueItem {
+  id: string;
+  kind: QueueItemKind;
+  memberId: string;
+  memberName: string;
+  memberAvatar: string;
+  title: string;
+  points: number;
+  dueDateLocal: string | null;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Ledger — append-only and authoritative. Member.pointsBalance is a cache.
+// ---------------------------------------------------------------------------
+
+export type LedgerKind =
+  | 'task_award'
+  | 'bonus'
+  | 'streak_bonus'
+  | 'challenge'
+  | 'achievement'
+  | 'redemption'
+  | 'manual_adjust'
+  | 'reversal';
+
+export interface LedgerEntity {
+  delta: number;
+  kind: LedgerKind;
+  refType: string | null;
+  refId: string | null;
+  description: string;
+  /** Best-effort snapshot; the running sum of deltas is the real answer. */
+  balanceAfter: number;
+  actorMemberId: string | null;
+  createdAt: string;
+}
+
+export interface LedgerEntry {
+  id: string;
+  delta: number;
+  kind: LedgerKind;
+  description: string;
+  balanceAfter: number;
   createdAt: string;
 }

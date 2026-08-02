@@ -180,12 +180,21 @@ export async function remove(name: TableName, partitionKey: string, rowKey: stri
  * Read-modify-write against an ETag, retrying on 412. Used for the
  * `Member.pointsBalance` cache, where a concurrent approval would otherwise
  * silently clobber the other writer.
+ *
+ * The mutate callback returns only the fields it wants to change, and the
+ * write uses Merge rather than Replace. That distinction is load-bearing:
+ * Replace with a partial entity would silently delete every field the callback
+ * did not mention — on a member row that means wiping the PIN hash to award
+ * 15 points. The ETag still guards the read-modify-write, so a concurrent
+ * writer produces a 412 and a retry rather than a lost update.
  */
 export async function updateWithRetry<T extends object>(
   name: TableName,
   partitionKey: string,
   rowKey: string,
-  mutate: (current: Entity<T> & { etag: string }) => Entity<T> | null,
+  mutate: (
+    current: Entity<T> & { etag: string },
+  ) => (Partial<T> & { partitionKey: string; rowKey: string }) | null,
   attempts = 5,
 ): Promise<boolean> {
   for (let i = 0; i < attempts; i++) {
@@ -196,7 +205,7 @@ export async function updateWithRetry<T extends object>(
     if (next === null) return true; // caller decided this is already done
 
     try {
-      await table(name).updateEntity(next, 'Replace', { etag: current.etag });
+      await table(name).updateEntity(next, 'Merge', { etag: current.etag });
       return true;
     } catch (e) {
       if (!isPreconditionFailed(e)) throw e;

@@ -21,7 +21,7 @@ const {
   resolveSession,
   elevateSession,
 } = await import('../src/lib/auth.js');
-const { fakeRequest, cookieValue } = await import('./helpers.js');
+const { fakeRequest, cookieValue, purgeHousehold } = await import('./helpers.js');
 
 const HH = 'test';
 
@@ -46,6 +46,7 @@ async function seedMember(id: string, role: 'parent' | 'child', pin: string) {
 
 beforeAll(async () => {
   await ensureTables();
+  await purgeHousehold(HH);
   await seedMember('parent1', 'parent', '4816');
   await seedMember('child1', 'child', '7391');
 });
