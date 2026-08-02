@@ -91,7 +91,6 @@ repo as the visual reference and update it when the design changes.
 │   ├── ci.yml                                            ← NEW: typecheck/lint/test, every branch
 │   └── cron-tick.yml                                     ← NEW: the missing timer trigger
 ├── .gitignore                                            ← NEW, in the FIRST commit (see R1)
-├── staticwebapp.config.json                              ← NEW
 ├── swa-cli.config.json                                   ← NEW
 ├── shared/          ← plain TS source consumed by both sides (no npm workspaces)
 │   ├── keys.ts      ← every PartitionKey/RowKey format. Highest-leverage file in the repo.
@@ -100,6 +99,7 @@ repo as the visual reference and update it when the design changes.
 │   ├── pg13.ts       ← deterministic content filter
 │   └── fallbackCopy.ts
 ├── web/             ← own package.json + lockfile
+│   ├── public/staticwebapp.config.json      ← MUST ship inside the app artifact
 │   ├── public/legacy/decision-matrix.html   ← preserved default.html, byte-identical
 │   └── src/
 └── api/             ← own package.json + lockfile
@@ -135,7 +135,9 @@ bundles poorly (~200 lines vs. a heavyweight dep).
 ```
 
 Also bump `actions/checkout@v3`→`v4` and `actions/github-script@v6`→`v7`; the OIDC step is
-fine as-is. `staticwebapp.config.json` sets `platform.apiRuntime: "node:20"`, a SPA
+fine as-is. `web/public/staticwebapp.config.json` (emitted into `web/dist/` by Vite — SWA reads it
+only from inside the app artifact, and with it missing the deploy fails with
+"Function language info isn't provided") sets `platform.apiRuntime: "node:20"`, a SPA
 `navigationFallback` that **excludes `/legacy/*`** (or the SPA router silently swallows the
 decision tree), a 301 from `/default.html` → `/legacy/decision-matrix.html`, and CSP
 headers. No `allowedRoles` — SWA built-in auth is unused; all authorization is enforced in
@@ -559,7 +561,7 @@ tablet at ~40 MB/month.
 ## Critical files
 
 - `.github/workflows/azure-static-web-apps-gentle-sky-0cf50a710.yml` — gates everything else deploying
-- `staticwebapp.config.json` — `apiRuntime`, SPA fallback with the `/legacy/*` exclusion, the 301
+- `web/public/staticwebapp.config.json` — `apiRuntime`, SPA fallback with the `/legacy/*` exclusion, the 301. Must be emitted into `web/dist/`.
 - `shared/keys.ts` — single source of truth for every PK/RK format; a typo here is a silent data bug
 - `api/src/services/materializer.ts` — idempotent recurrence → dated instances, lazy + cron
 - `api/src/services/googleSync.ts` — incremental sync, EventMap, three echo layers, conflicts. Highest-complexity module

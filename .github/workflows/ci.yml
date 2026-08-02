@@ -46,6 +46,23 @@ jobs:
       - name: Build web
         run: npm run build --prefix web
 
+      # The deploy hands SWA the already-built web/dist as app_location, and
+      # SWA reads staticwebapp.config.json only from inside that artifact. If
+      # it goes missing, platform.apiRuntime goes with it and the deploy fails
+      # with the distinctly unhelpful "Function language info isn't provided".
+      - name: Assert SWA config ships inside the app artifact
+        run: |
+          test -f web/dist/staticwebapp.config.json \
+            || { echo "::error::web/dist/staticwebapp.config.json missing — it must live in web/public/"; exit 1; }
+          node -e "
+            const c = require('./web/dist/staticwebapp.config.json');
+            if (!c.platform || !c.platform.apiRuntime) {
+              console.error('::error::platform.apiRuntime missing from staticwebapp.config.json');
+              process.exit(1);
+            }
+            console.log('apiRuntime =', c.platform.apiRuntime);
+          "
+
       - name: Build api
         run: npm run build --prefix api
 

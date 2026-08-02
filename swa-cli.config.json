@@ -5,6 +5,7 @@
       "appLocation": "web",
       "apiLocation": "api",
       "outputLocation": "dist",
+      "swaConfigLocation": "web/public",
       "appDevserverUrl": "http://localhost:5173",
       "apiDevserverUrl": "http://localhost:7071"
     }
