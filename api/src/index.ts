@@ -16,3 +16,6 @@
  */
 
 import './functions/health.js';
+import './functions/auth.js';
+import './functions/members.js';
+import './functions/devices.js';

@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useSurface } from '@/lib/surface';
+import { SessionControl } from '@/components/SessionControl';
 
 /**
  * The surface shells.
@@ -112,13 +113,44 @@ function DesktopShell(): ReactNode {
 function TopBar(): ReactNode {
   return (
     <header className="border-line bg-panel flex items-center justify-between gap-4 border-b px-5 py-3">
-      <div className="font-display flex items-center gap-2 text-sm tracking-[0.16em] uppercase">
+      <div className="font-display flex items-center gap-2 text-sm tracking-[0.16em] uppercase kiosk:text-lg">
         <span className="bg-approved inline-block size-2 rounded-full" />
         Family HQ
       </div>
-      {/* Clock and the avatar/session control land here in Phase 1. */}
-      <div className="text-ink-faint font-mono text-sm">—</div>
+      <Clock />
+      <SessionControl />
     </header>
+  );
+}
+
+function Clock(): ReactNode {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    // Tick on the minute boundary rather than every second — the display shows
+    // minutes, and a wall tablet should not wake once a second to redraw.
+    const tick = () => setNow(new Date());
+    const msToNextMinute = 60_000 - (Date.now() % 60_000);
+    let interval: ReturnType<typeof setInterval>;
+    const timeout = setTimeout(() => {
+      tick();
+      interval = setInterval(tick, 60_000);
+    }, msToNextMinute);
+    return () => {
+      clearTimeout(timeout);
+      if (interval) clearInterval(interval);
+    };
+  }, []);
+
+  return (
+    <div className="text-center leading-tight">
+      <div className="font-mono text-lg tabular-nums kiosk:text-3xl">
+        {now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+      </div>
+      <div className="font-display text-ink-dim text-[10px] tracking-[0.14em] uppercase kiosk:text-sm">
+        {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+      </div>
+    </div>
   );
 }
 
