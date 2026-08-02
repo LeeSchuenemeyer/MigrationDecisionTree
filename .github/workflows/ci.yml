@@ -126,8 +126,16 @@ jobs:
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
 
+      # The root install is required, not incidental. `npm run seed` runs
+      # through tsx, and tsx resolves a bare import the way Node does: by
+      # walking up from the importing FILE. `shared/time.ts` imports luxon, and
+      # shared/ sits beside api/ rather than inside it, so the walk goes
+      # shared/node_modules → <root>/node_modules and never once looks in
+      # api/node_modules. The deployed API is unaffected — esbuild bundles it
+      # with nodePaths pointing at api/ — but the seed script is not bundled.
       - name: Install
         run: |
+          npm ci
           npm ci --prefix web
           npm ci --prefix api
           npm ci --prefix e2e
