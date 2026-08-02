@@ -5,13 +5,26 @@
   "trailingSlash": "auto",
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/legacy/*", "/assets/*", "*.{png,svg,ico,webp,woff2,json}"]
+    "exclude": [
+      "/api/*",
+      "/legacy/*",
+      "/assets/*",
+      "/compat.html",
+      "/surface-boot.js",
+      "*.{png,svg,ico,webp,woff2,json}"
+    ]
   },
   "routes": [
     {
       "route": "/default.html",
       "redirect": "/legacy/decision-matrix.html",
       "statusCode": 301
+    },
+    {
+      "route": "/compat.html",
+      "headers": {
+        "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+      }
     },
     { "route": "/api/cron/tick", "methods": ["POST"] },
     { "route": "/api/google/webhook", "methods": ["POST"] }

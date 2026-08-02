@@ -84,6 +84,25 @@ jobs:
             console.log('apiRuntime =', c.platform.apiRuntime);
           "
 
+      # The app CSP is `default-src 'self'` with no script-src, so any inline
+      # <script> in the shipped index.html is blocked in production — and it
+      # fails SILENTLY. The one we had was the pre-paint surface detection, so
+      # the symptom would have been a wall tablet rendering the phone layout
+      # with nothing in the console anyone was watching.
+      - name: Assert no inline scripts in the app shell
+        run: |
+          node -e "
+            const fs = require('fs');
+            const html = fs.readFileSync('web/dist/index.html', 'utf8');
+            const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+              .filter((m) => m[1].trim().length > 0);
+            if (inline.length) {
+              console.error('::error::web/dist/index.html has ' + inline.length + ' inline <script> block(s); the CSP blocks them. Move to web/public/ and load with src.');
+              process.exit(1);
+            }
+            console.log('no inline scripts in the app shell');
+          "
+
       - name: Build api
         run: npm run build --prefix api
 

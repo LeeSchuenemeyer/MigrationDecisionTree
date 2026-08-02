@@ -557,9 +557,36 @@ functions registered and no obvious error.
 
 **R7 — "Not installable" has a practical consequence.** Skipping the PWA is right, but a
 plain browser tab is a poor kiosk (URL bar, sleep, accidental navigation). The substitute is
-**device configuration, not code**: Fully Kiosk Browser on Android, or Guided Access +
-Safari on iPad, pinned to `/?kiosk=1`. Decide the tablet platform early — Fully Kiosk is
-meaningfully better for this than iPad Guided Access.
+**device configuration, not code**.
+
+*Decided:* **Android tablets and phones, plus an LG StanbyME 2.** The always-on wall display
+should be an Android tablet running **Fully Kiosk Browser**, pinned to `/?kiosk=1` — real
+kiosk mode, screen-on control, auto-restart, auto-launch, URL locking. webOS has no
+equivalent, so the StanbyME 2 is best treated as a portable second screen rather than the
+unattended wall display.
+
+*The engine floor is now the StanbyME 2.* webOS 24 ships Chromium 108, webOS 25 ships
+Chromium 120. `web/vite.config.ts` pins `target: chrome108` so this stops being a moving
+default. Tailwind v4 nominally wants Chrome 111+ for `color-mix()`, but it emits an
+8-digit-hex fallback outside the `@supports` guard for every opacity modifier — verified
+against the built CSS — so 108 degrades to a slightly different shade rather than losing the
+colour. `web/public/compat.html` is a standalone ES5 diagnostic reporting the actual engine,
+whether touch reaches the page, and a verdict. It deliberately shares nothing with the app
+bundle: a diagnostic built from the bundle tells you nothing on the device where the bundle
+is the thing that fails.
+
+*If the StanbyME must be primary:* package it as a webOS app (`appinfo.json` with
+`supportTouchMode: "full"`), which buys real touch events, a launcher tile, and auto-launch,
+at the cost of an LG developer account and ~7-day re-signing on a dev-mode device.
+
+**R7a — The CSP silently blocked the app shell's inline script.** `default-src 'self'` with
+no `script-src` blocks inline `<script>`, and the one in `index.html` was the pre-paint
+surface detection. The symptom would have been a wall tablet rendering the phone layout,
+permanently, with the error only in a console nobody was watching. Moved to
+`web/public/surface-boot.js` and loaded with `src`; a CI step now fails the build if an
+inline script reappears in `web/dist/index.html`. `/compat.html` gets a route-scoped CSP
+permitting its inline script but setting `connect-src 'none'`, so the page it relaxes for
+cannot talk to anything.
 
 **R8 — Attribution.** Dashboard-created events show as authored by the one household Google
 account, and each family member must have the household calendar *shared to* their personal

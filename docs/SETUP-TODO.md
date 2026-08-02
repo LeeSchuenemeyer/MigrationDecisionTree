@@ -72,20 +72,71 @@ just has nowhere to put data.
       stacking all 9 phases onto it unless you'd rather review in smaller pieces — say the
       word and I'll open a fresh PR per phase from here.
 
-- [ ] **Which tablet?** This changes nothing in the code but it does change the setup
-      instructions I write, and it's worth deciding early:
-      - **Android + [Fully Kiosk Browser](https://www.fully-kiosk.com/)** — meaningfully
-        better for this. Real kiosk mode, screen-on control, auto-restart, remote admin.
-      - **iPad + Guided Access + Safari** — workable, clumsier. No proper kiosk mode.
-
-      (We deliberately skipped a PWA, so kiosk behaviour comes from device configuration
-      rather than code.)
+- [x] ~~**Which tablet?**~~ **Decided: Android tablets and phones, plus an LG StanbyME 2.**
+      See §2a below — the StanbyME needs one check from you before I can finish Phase 8.
 
 - [ ] **Node 20 vs 22.** Some `@azure/core-*` packages now declare `node >=22` while the SWA
       runtime is pinned to `node:20`. It works today — they're transitive deps of
       `@azure/data-tables`, which itself declares `node >=20`. If you can check whether your
       SWA supports `apiRuntime: "node:22"`, I'd rather move deliberately than inherit a
       silent mismatch. Not urgent.
+
+---
+
+## 2a. Devices
+
+**Android tablets and phones** — no problem at all. Chrome on Android is current, so
+everything works, including the Phase 8 kiosk hardening. For whichever Android tablet
+ends up wall-mounted, use **[Fully Kiosk Browser](https://www.fully-kiosk.com/)**: real
+kiosk mode, screen-on control, auto-restart on crash, scheduled sleep/wake, remote admin.
+It's the single biggest quality-of-life difference between "a browser tab on a wall" and
+"an appliance." Point it at `https://<your-swa>/?kiosk=1`.
+
+**LG StanbyME 2** — webOS, and there is one thing I need you to check.
+
+- [ ] 🔍 **Open `https://<your-swa>/compat.html` in the StanbyME's Web Browser app and
+      send me what it says.** It's a standalone diagnostic page — no framework, no bundle,
+      ES5 only — so it renders even on an engine too old to run the app itself. It reports
+      the Chromium version, whether touch reaches the page, and a plain-English verdict.
+
+      Why it matters: webOS 24 ships Chromium 108, webOS 25 ships Chromium 120, and I
+      can't tell from here which one your unit runs. The app bundle now targets Chromium
+      108, so **either way it should run** — but between 108 and 111 the translucent tints
+      fall back from `color-mix()` to plain hex alpha (a shade off, nothing broken), and
+      below 108 it won't parse at all and you'd get a white screen with no error. The
+      page tells you which world you're in in about ten seconds.
+
+- [ ] **Try the browser route first, but know what you give up.** You asked whether we can
+      just use the browser rather than the app store — yes, and I'd start there. The
+      honest trade-off, so it isn't a surprise later:
+
+      | | Android + Fully Kiosk | StanbyME 2 browser |
+      |---|---|---|
+      | Hide the URL bar / chrome | yes | no |
+      | Prevent sleep / screen-off | yes (and Wake Lock) | device settings only |
+      | Auto-restart after a crash | yes | no — someone re-opens it |
+      | Auto-launch on power-on | yes | no |
+      | Lock to one URL | yes | no |
+
+      None of that is code I can write — we deliberately skipped a PWA, so kiosk behaviour
+      comes from device configuration. On webOS there simply isn't a Fully Kiosk
+      equivalent. **My recommendation: make an Android tablet the always-on wall display,
+      and treat the StanbyME 2 as a portable second screen** — genuinely nice for the
+      calendar in the kitchen, propped up during dinner, moved to wherever people are.
+      That plays to what it's actually good at.
+
+- [ ] **If you'd rather the StanbyME be the primary display, tell me** and I'll look into
+      packaging a webOS app. It's a real option — webOS apps are just web apps with an
+      `appinfo.json`, and `supportTouchMode: "full"` there gives proper touch events plus
+      a launcher tile and auto-launch. The cost is an LG developer account, sideloading
+      via the CLI, and a re-signing dance roughly every 7 days on a dev-mode device unless
+      it's published. Worth it only if that screen is the centrepiece.
+
+- [ ] **Confirm the wall tablet is landscape and ≥1024px wide.** Surface detection keys on
+      `(min-width:1024px) and (pointer:coarse) and (orientation:landscape)`. The StanbyME 2
+      is 27" QHD, so it qualifies easily — but it rotates to portrait, and in portrait it
+      will render the phone layout. `?kiosk=1` pins it regardless; `/compat.html` shows you
+      what the heuristic currently resolves to.
 
 ---
 

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Family HQ — device check</title>
+    <!--
+      Deliberately standalone: no bundle, no framework, no modern syntax, no
+      build step. ES5 only, so it renders on an engine old enough that the app
+      bundle itself would fail to parse.
+
+      That is the whole point. If the app shows a white screen on a device, a
+      diagnostic built out of the same bundle tells you nothing. This one always
+      renders, and tells you *why*.
+
+      Open http://<the-app>/compat.html on each tablet and read the table.
+    -->
+    <style>
+      body {
+        margin: 0;
+        padding: 16px;
+        background: #12181f;
+        color: #e8edf2;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        font-size: 15px;
+      }
+      h1 {
+        font-size: 18px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #f0a830;
+        margin: 0 0 4px;
+      }
+      p.sub { color: #93a2b4; margin: 0 0 18px; font-size: 13px; }
+      table { border-collapse: collapse; width: 100%; max-width: 720px; }
+      td { padding: 7px 8px; border-bottom: 1px solid #27313d; vertical-align: top; }
+      td.k { color: #93a2b4; width: 48%; }
+      td.v { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+      .ok { color: #57c98a; }
+      .no { color: #e8705f; }
+      .meh { color: #7fa8d9; }
+      #ua {
+        margin: 18px 0 0;
+        padding: 10px;
+        background: #1a222c;
+        border: 1px solid #27313d;
+        border-radius: 6px;
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        font-size: 11px;
+        word-break: break-all;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      #verdict {
+        margin: 16px 0 0;
+        padding: 12px;
+        border-radius: 6px;
+        border-left: 4px solid #93a2b4;
+        background: #1a222c;
+        line-height: 1.45;
+      }
+      #touchpad {
+        margin: 18px 0 0;
+        height: 90px;
+        border: 2px dashed #61707f;
+        border-radius: 8px;
+        display: block;
+        width: 100%;
+        color: #93a2b4;
+        background: #1a222c;
+        font: inherit;
+        line-height: 86px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Family HQ — device check</h1>
+    <p class="sub">What this browser can and cannot do. Nothing here talks to the server.</p>
+
+    <table id="results"></table>
+
+    <button id="touchpad" type="button">Tap here to test touch input</button>
+
+    <div id="verdict">Checking&hellip;</div>
+    <div id="ua"></div>
+
+    <script>
+      /* ES5 only — see the comment in <head>. No const/let, no arrow functions,
+         no template literals, nothing that would throw a SyntaxError on the
+         engine we are trying to diagnose. */
+      (function () {
+        var rows = [];
+
+        function add(label, pass, detail) {
+          rows.push({ label: label, pass: pass, detail: detail });
+        }
+
+        function supportsCss(prop, value) {
+          try {
+            return !!(window.CSS && CSS.supports && CSS.supports(prop, value));
+          } catch (e) {
+            return false;
+          }
+        }
+
+        /* Chromium version drives everything else, so report it first. */
+        var chrome = /Chrom(e|ium)\/(\d+)/.exec(navigator.userAgent);
+        var chromeVersion = chrome ? parseInt(chrome[2], 10) : 0;
+        add(
+          'Chromium engine',
+          chromeVersion === 0 ? 'meh' : chromeVersion >= 111,
+          chromeVersion ? chromeVersion : 'not Chromium'
+        );
+
+        /* The app bundle is built for chrome108. Below that it will not parse
+           and you get a white screen rather than an error. */
+        add(
+          'Can run the app bundle (>= 108)',
+          chromeVersion === 0 ? 'meh' : chromeVersion >= 108,
+          chromeVersion >= 108 ? 'yes' : 'NO — bundle target is chrome108'
+        );
+
+        /* Tailwind v4 wants this. It emits a hex-alpha fallback when missing,
+           so a "no" here is cosmetic, not fatal. */
+        add(
+          'color-mix() — exact translucent tints',
+          supportsCss('color', 'color-mix(in oklab, red 50%, transparent)'),
+          'falls back to hex alpha if missing'
+        );
+        add('CSS :has()', supportsCss('selector(:has(*))') || supportsCss('color', 'red'), '');
+        add('CSS custom properties', supportsCss('--x', '1'), 'required');
+        add('Flexbox gap', supportsCss('gap', '1px'), 'required');
+
+        /* Kiosk hardening (Phase 8). All optional — the app feature-detects. */
+        add('Wake Lock (screen stays on)', 'wakeLock' in navigator, 'else use device settings');
+        add('Fullscreen API', !!(document.documentElement.requestFullscreen), '');
+        add('Touch events', 'ontouchstart' in window, 'may be mouse-only in this browser');
+        add('Pointer: coarse (touch-first)', !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), '');
+        add(
+          'Landscape + >= 1024px (kiosk layout)',
+          !!(window.matchMedia && matchMedia('(min-width:1024px) and (orientation:landscape)').matches),
+          window.innerWidth + '×' + window.innerHeight
+        );
+        add('Cookies enabled', navigator.cookieEnabled === true, 'sessions need these');
+        add('localStorage', (function () {
+          try { localStorage.setItem('_t', '1'); localStorage.removeItem('_t'); return true; }
+          catch (e) { return false; }
+        })(), 'kiosk mode flag is stored here');
+
+        var html = '';
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i];
+          var cls = r.pass === 'meh' ? 'meh' : r.pass ? 'ok' : 'no';
+          var mark = r.pass === 'meh' ? '?' : r.pass ? 'yes' : 'no';
+          html +=
+            '<tr><td class="k">' + r.label + '</td><td class="v ' + cls + '">' +
+            mark + (r.detail ? ' <span style="color:#61707f">' + r.detail + '</span>' : '') +
+            '</td></tr>';
+        }
+        document.getElementById('results').innerHTML = html;
+        document.getElementById('ua').textContent = navigator.userAgent;
+
+        /* The one thing feature detection genuinely cannot answer: whether this
+           browser actually delivers input events to the page when a finger
+           touches the glass. On webOS that depends on the browser app, not the
+           web platform. So: tap it and see. */
+        var pad = document.getElementById('touchpad');
+        var seen = [];
+        function note(kind) {
+          if (seen.indexOf(kind) === -1) seen.push(kind);
+          pad.textContent = 'Got: ' + seen.join(', ');
+          pad.style.borderColor = '#57c98a';
+          pad.style.color = '#57c98a';
+        }
+        pad.addEventListener('touchstart', function () { note('touch'); }, false);
+        pad.addEventListener('pointerdown', function () { note('pointer'); }, false);
+        pad.addEventListener('click', function () { note('click'); }, false);
+
+        var verdict = document.getElementById('verdict');
+        if (chromeVersion && chromeVersion < 108) {
+          verdict.style.borderLeftColor = '#e8705f';
+          verdict.innerHTML =
+            '<strong>Too old for the app as built.</strong> This engine is Chromium ' +
+            chromeVersion + '; the bundle targets 108. Use this device for casting ' +
+            'only, or tell me and I will lower the build target.';
+        } else if (chromeVersion && chromeVersion < 111) {
+          verdict.style.borderLeftColor = '#7fa8d9';
+          verdict.innerHTML =
+            '<strong>Workable.</strong> Chromium ' + chromeVersion + ' runs the app. ' +
+            'Translucent tints use the hex fallback instead of color-mix() — a ' +
+            'shade off, nothing broken.';
+        } else if (chromeVersion) {
+          verdict.style.borderLeftColor = '#57c98a';
+          verdict.innerHTML = '<strong>Fully supported.</strong> Chromium ' + chromeVersion + '.';
+        } else {
+          verdict.style.borderLeftColor = '#93a2b4';
+          verdict.innerHTML =
+            '<strong>Not a Chromium browser.</strong> Check the rows above ' +
+            'individually and send me the user agent string below.';
+        }
+      })();
+    </script>
+  </body>
+</html>
