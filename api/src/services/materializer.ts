@@ -151,6 +151,8 @@ export async function materialize(throughDate?: LocalDate): Promise<MaterializeR
         status: 'open',
         completedAt: null,
         completedBy: null,
+        computedPoints: null,
+        appliedStreakMultiplier: null,
         approvedAt: null,
         approvedBy: null,
         ledgerEntryId: null,

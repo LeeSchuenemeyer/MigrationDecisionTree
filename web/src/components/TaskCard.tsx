@@ -101,8 +101,12 @@ export function TaskCard({
         ].join(' ')}
       >
         {pending ? '+' : ''}
-        {task.awardedPoints ?? task.basePoints}
-        {task.multiplier > 1 ? ` ×${task.multiplier}` : ''}
+        {/* Once tapped, show what it is actually worth — base × wildcard ×
+            streak, snapshotted at completion. Before then only the wildcard is
+            known for certain, so an untouched chore shows its face value and
+            the streak bonus arrives as an upward surprise. */}
+        {task.awardedPoints ?? task.computedPoints ?? task.basePoints}
+        {task.multiplier > 1 && task.computedPoints === null ? ` ×${task.multiplier}` : ''}
       </span>
     </button>
   );

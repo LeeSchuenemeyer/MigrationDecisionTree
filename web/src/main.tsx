@@ -7,6 +7,8 @@ import './styles/globals.css';
 import { Shell } from './shells/Shell';
 import { Board } from './routes/Board';
 import { Queue } from './routes/Queue';
+import { Points } from './routes/Points';
+import { Rewards } from './routes/Rewards';
 import { Placeholder } from './routes/Placeholder';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -33,9 +35,9 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Board /> },
       { path: 'calendar', element: <Placeholder title="Calendar" phase="Phase 6" /> },
-      { path: 'points', element: <Placeholder title="Points" phase="Phase 3" /> },
+      { path: 'points', element: <Points /> },
       { path: 'queue', element: <Queue /> },
-      { path: 'rewards', element: <Placeholder title="Rewards" phase="Phase 3" /> },
+      { path: 'rewards', element: <Rewards /> },
       { path: 'me', element: <Placeholder title="Me" phase="Phase 1" /> },
       { path: 'settings', element: <Placeholder title="Settings" phase="Phase 1" /> },
       { path: 'kiosk/enroll', element: <Placeholder title="Enroll this tablet" phase="Phase 1" /> },

@@ -12,7 +12,7 @@ import {
   taskInstancePK,
   taskInstancePKRange,
 } from '../../../shared/keys.js';
-import { computeAward } from '../../../shared/points.js';
+import { computeAward, describeBonus } from '../../../shared/points.js';
 import {
   localDateNow,
   localDateTimeMs,
@@ -27,7 +27,9 @@ import type {
   TaskInstance,
   TaskInstanceEntity,
 } from '../../../shared/types.js';
+import { effectiveLength } from '../../../shared/streaks.js';
 import { env } from '../lib/env.js';
+import { TaskError } from '../lib/errors.js';
 import { writeFeedItem } from '../lib/feed.js';
 import { getMemberRow } from '../lib/members.js';
 import { bumpRev } from '../lib/rev.js';
@@ -39,6 +41,7 @@ import {
   updateWithRetry,
   upsert,
 } from '../lib/tables.js';
+import { evaluateStreak, readStreak } from './points.js';
 
 type InstanceRow = TaskInstanceEntity & { partitionKey: string; rowKey: string; etag: string };
 
@@ -64,6 +67,8 @@ function toInstance(row: InstanceRow, nowMs: number): TaskInstance {
     assignedMemberId: row.assignedMemberId,
     assignedMemberName: row.assignedMemberName,
     status: row.status,
+    computedPoints: row.computedPoints ?? null,
+    appliedStreakMultiplier: row.appliedStreakMultiplier ?? null,
     awardedPoints: row.awardedPoints,
     overdue: row.status === 'open' && dueMs !== null && dueMs < nowMs,
   };
@@ -111,15 +116,7 @@ async function getInstance(date: LocalDate, rowKey: string): Promise<InstanceRow
 // Completing a chore
 // ---------------------------------------------------------------------------
 
-export class TaskError extends Error {
-  constructor(
-    override readonly message: string,
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = 'TaskError';
-  }
-}
+export { TaskError };
 
 /**
  * Mark a chore done. It becomes `pending` and enters the parent queue.
@@ -127,6 +124,12 @@ export class TaskError extends Error {
  * Points move into `pendingPoints`, never into the balance — a pending chore
  * must not affect the ranked leaderboard, or the standings would swing on work
  * nobody has confirmed.
+ *
+ * The award is computed **here**, once, and snapshotted onto the instance as
+ * `computedPoints`. Approval then pays exactly that number rather than
+ * recomputing it. Two reasons: the streak in force when the work was actually
+ * done is the honest multiplier, and a recomputed award could differ from the
+ * "+18 pending" the kid was shown, leaving `pendingPoints` permanently adrift.
  */
 export async function completeTask(
   date: LocalDate,
@@ -151,7 +154,16 @@ export async function completeTask(
   }
 
   const now = Date.now();
-  const award = computeAward({ basePoints: row.basePoints, wildcardMultiplier: row.multiplier });
+
+  // The streak as it stands *entering* today. Deliberately read before this
+  // chore is recorded, so finishing the day's last chore does not retroactively
+  // pay itself the tier it just unlocked — that tier applies from tomorrow.
+  const streak = await readStreak(actor.id);
+  const award = computeAward({
+    basePoints: row.basePoints,
+    wildcardMultiplier: row.multiplier,
+    streakDays: effectiveLength(streak, row.dueDateLocal),
+  });
 
   await upsert(TABLES.taskInstances, {
     partitionKey: row.partitionKey,
@@ -159,6 +171,8 @@ export async function completeTask(
     status: 'pending',
     completedAt: new Date(now).toISOString(),
     completedBy: actor.id,
+    computedPoints: award.total,
+    appliedStreakMultiplier: award.streakMultiplier,
     ...(claimed ? { assignedMemberId: actor.id, assignedMemberName: actor.displayName } : {}),
   });
 
@@ -195,7 +209,7 @@ export async function completeTask(
   await writeFeedItem({
     kind: 'task_completed',
     headline: `${actor.displayName} ticked off “${row.title}”`,
-    detail: 'waiting on a parent',
+    detail: describeBonus(award) ?? 'waiting on a parent',
     icon: row.icon,
     points: award.total,
     actor: { id: actor.id, name: actor.displayName, avatar: actor.avatarEmoji },
@@ -265,7 +279,11 @@ export async function approveTask(
   const member = await getMemberRow(memberId);
   if (!member) throw new TaskError('That family member no longer exists.', 404);
 
-  const award = computeAward({ basePoints: row.basePoints, wildcardMultiplier: row.multiplier });
+  // Pay the number snapshotted at completion, not a fresh computation. The kid
+  // was shown "+18 pending"; anything else here is a bug they will notice.
+  const awarded =
+    row.computedPoints ??
+    computeAward({ basePoints: row.basePoints, wildcardMultiplier: row.multiplier }).total;
   const now = Date.now();
   const entryId = randomUUID();
 
@@ -273,12 +291,12 @@ export async function approveTask(
   const ledgerEntity: LedgerEntity & { partitionKey: string; rowKey: string } = {
     partitionKey: ledgerPK(env.householdId, memberId, yearMonthOfLocalDate(row.dueDateLocal)),
     rowKey: ledgerRK(now, entryId),
-    delta: award.total,
+    delta: awarded,
     kind: 'task_award',
     refType: 'task',
     refId: row.rowKey,
     description: row.title,
-    balanceAfter: member.pointsBalance + award.total,
+    balanceAfter: member.pointsBalance + awarded,
     actorMemberId: approver.id,
     createdAt: new Date(now).toISOString(),
   };
@@ -292,7 +310,7 @@ export async function approveTask(
     approvedAt: new Date(now).toISOString(),
     approvedBy: approver.id,
     ledgerEntryId: entryId,
-    awardedPoints: award.total,
+    awardedPoints: awarded,
   });
 
   // ---- 4. Balance cache, ETag-conditional ---------------------------------
@@ -303,9 +321,9 @@ export async function approveTask(
     (current) => ({
       partitionKey: current.partitionKey,
       rowKey: current.rowKey,
-      pointsBalance: (current.pointsBalance ?? 0) + award.total,
-      lifetimePoints: (current.lifetimePoints ?? 0) + award.total,
-      pendingPoints: Math.max(0, (current.pendingPoints ?? 0) - award.total),
+      pointsBalance: (current.pointsBalance ?? 0) + awarded,
+      lifetimePoints: (current.lifetimePoints ?? 0) + awarded,
+      pendingPoints: Math.max(0, (current.pendingPoints ?? 0) - awarded),
     }),
   );
 
@@ -313,7 +331,7 @@ export async function approveTask(
     kind: 'task_approved',
     headline: `${member.displayName} cleared “${row.title}”`,
     icon: row.icon,
-    points: award.total,
+    points: awarded,
     actor: { id: memberId, name: member.displayName, avatar: member.avatarEmoji },
     refType: 'task',
     refId: row.rowKey,
@@ -322,8 +340,19 @@ export async function approveTask(
   // ---- 5. Queue row LAST --------------------------------------------------
   await remove(TABLES.actionQueue, queueRow.partitionKey, queueRow.rowKey);
 
+  // ---- 6. Streak, after the points are safely down ------------------------
+  // Runs last and never throws into the caller: a streak is a motivator, and
+  // failing an approval that already landed in the ledger because a bonus
+  // counter would not write would be a strictly worse outcome. The cron tick
+  // re-evaluates the same day idempotently, so a miss here self-heals.
+  try {
+    await evaluateStreak(memberId, row.dueDateLocal);
+  } catch {
+    // Deliberately swallowed; see above.
+  }
+
   await bumpRev(['tasks', 'queue', 'points', 'members']);
-  return { awarded: award.total, memberId };
+  return { awarded, memberId };
 }
 
 /** Send a chore back. Points never landed, so only the pending cache unwinds. */
@@ -353,6 +382,10 @@ export async function rejectTask(
       status: 'open',
       completedAt: null,
       completedBy: null,
+      // Clear the snapshot too: if it is done again tomorrow the streak may
+      // have moved, and a stale snapshot would pay yesterday's multiplier.
+      computedPoints: null,
+      appliedStreakMultiplier: null,
       note: note ?? null,
       approvedBy: approver.id,
     });

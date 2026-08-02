@@ -442,6 +442,25 @@ Riskiest infrastructure first, and something usable early. Nothing is cut — th
 
 Phase 2 is the earliest point where stopping still leaves something the family uses daily.
 
+**Phase 3 as built.** Two decisions worth recording, because both are the kind
+that look arbitrary later:
+
+- **The award is computed at completion, not approval, and snapshotted onto the
+  instance** (`computedPoints`, `appliedStreakMultiplier`). The streak in force
+  when the work was actually done is the honest multiplier, and recomputing at
+  approval time would let the paid amount drift from the "+18 pending" the child
+  was shown — leaving `pendingPoints` permanently off by the difference.
+- **`POST /api/queue/{id}/approve|reject` are polymorphic**, dispatching on the
+  queue row's own `kind` (`api/src/services/queue.ts`). Chore approvals and
+  reward redemptions already share one partition so a parent gets one badge and
+  one screen; that only pays off if the endpoints are unified too, or the client
+  grows a branch per kind and the single screen is a fiction.
+
+`TaskError` moved to `api/src/lib/errors.ts`. Both services raise it, and a
+`services/tasks` ↔ `services/points` cycle is exactly what works under `tsc` and
+then breaks once esbuild reorders the bundle.
+
+
 ## 9. Verification
 
 ```bash

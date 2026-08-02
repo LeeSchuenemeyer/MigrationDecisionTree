@@ -122,6 +122,8 @@ export type FeedKind =
   | 'achievement'
   | 'streak'
   | 'redemption'
+  | 'wildcard'
+  | 'adjustment'
   | 'event_upcoming'
   | 'challenge'
   | 'security'
@@ -229,6 +231,13 @@ export interface TaskInstanceEntity {
   completedBy: string | null;
   approvedAt: string | null;
   approvedBy: string | null;
+  /**
+   * The award computed at completion time, including the streak multiplier in
+   * force that day. Approval pays this rather than recomputing, so the number
+   * shown as "pending" is exactly the number that lands.
+   */
+  computedPoints: number | null;
+  appliedStreakMultiplier: number | null;
   /** Set once points land, and what makes approval idempotent. */
   ledgerEntryId: string | null;
   awardedPoints: number | null;
@@ -248,6 +257,9 @@ export interface TaskInstance {
   assignedMemberId: string;
   assignedMemberName: string | null;
   status: TaskStatus;
+  /** What it is worth now that it is done — base × wildcard × streak. */
+  computedPoints: number | null;
+  appliedStreakMultiplier: number | null;
   awardedPoints: number | null;
   /** True when the due time has passed and it is still open. */
   overdue: boolean;
@@ -319,4 +331,98 @@ export interface LedgerEntry {
   description: string;
   balanceAfter: number;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Streaks
+// ---------------------------------------------------------------------------
+
+export interface StreakEntity {
+  current: number;
+  longest: number;
+  lastQualifiedDate: string | null;
+  freezesRemaining: number;
+  updatedAt: string;
+}
+
+export interface StreakView {
+  key: string;
+  current: number;
+  longest: number;
+  multiplier: number;
+  alive: boolean;
+  deadline: string | null;
+  daysToNextTier: number | null;
+  nextTierMultiplier: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Rewards & redemptions
+// ---------------------------------------------------------------------------
+
+export type RedemptionStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled';
+
+export interface RewardEntity {
+  title: string;
+  description: string | null;
+  cost: number;
+  icon: string | null;
+  /** -1 means unlimited. */
+  stock: number;
+  requiresApproval: boolean;
+  /** JSON array of member ids; empty means everyone. */
+  restrictedToMemberIdsJson: string;
+  active: boolean;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface Reward {
+  id: string;
+  title: string;
+  description: string | null;
+  cost: number;
+  icon: string | null;
+  stock: number;
+  restrictedToMemberIds: string[];
+  active: boolean;
+  /** Computed per-viewer, so the catalog can grey out what they cannot buy. */
+  affordable?: boolean;
+}
+
+export interface RedemptionEntity {
+  rewardId: string;
+  /** Denormalized — the catalog entry may be deleted later. */
+  rewardTitle: string;
+  cost: number;
+  status: RedemptionStatus;
+  requestedAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  ledgerEntryId: string | null;
+  note: string | null;
+}
+
+export interface Redemption {
+  id: string;
+  rewardId: string;
+  rewardTitle: string;
+  cost: number;
+  status: RedemptionStatus;
+  requestedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Leaderboard
+// ---------------------------------------------------------------------------
+
+export interface LeaderboardRow {
+  member: Member;
+  rank: number;
+  /** Approved points only. Pending is reported separately and never ranked. */
+  points: number;
+  pendingPoints: number;
+  streakDays: number;
+  streakMultiplier: number;
+  streakAlive: boolean;
 }

@@ -8,14 +8,13 @@ import { getMemberRow } from '../lib/members.js';
 import { materialize } from '../services/materializer.js';
 import {
   TaskError,
-  approveTask,
   completeTask,
   listQueue,
   listTasksBetween,
   listTasksForDate,
-  rejectTask,
   today,
 } from '../services/tasks.js';
+import { resolveQueueItem } from '../services/queue.js';
 import { guarded } from './auth.js';
 
 const DateParam = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -74,29 +73,33 @@ export async function getQueue(req: HttpRequest): Promise<HttpResponseInit> {
 
 const ResolveBody = z.object({ note: z.string().max(280).optional() });
 
-/** POST /api/queue/{id}/approve */
-export async function postApprove(req: HttpRequest): Promise<HttpResponseInit> {
-  const { session, member } = await requireParent(req);
-  const id = req.params['id'];
-  if (!id) return badRequest('Which item?');
+/**
+ * POST /api/queue/{id}/approve and /reject.
+ *
+ * Deliberately polymorphic: the same two endpoints resolve a chore approval and
+ * a reward redemption, dispatching on the queue row's own kind. The client
+ * shows one list with one pair of buttons and never has to know the difference
+ * — which is the only way the "one queue, one habit" design actually pays off.
+ */
+function resolveHandler(action: 'approve' | 'reject') {
+  return async (req: HttpRequest): Promise<HttpResponseInit> => {
+    const { session, member } = await requireParent(req);
+    const id = req.params['id'];
+    if (!id) return badRequest('Which item?');
 
-  const result = await approveTask(decodeURIComponent(id), {
-    id: session.memberId,
-    displayName: member.displayName,
-  });
-  return json({ ok: true, ...result });
+    const body = ResolveBody.safeParse(await req.json().catch(() => ({})));
+    const result = await resolveQueueItem(
+      decodeURIComponent(id),
+      action,
+      { id: session.memberId, displayName: member.displayName },
+      body.success ? body.data.note : undefined,
+    );
+    return json({ ok: true, ...result });
+  };
 }
 
-/** POST /api/queue/{id}/reject */
-export async function postReject(req: HttpRequest): Promise<HttpResponseInit> {
-  const { session } = await requireParent(req);
-  const id = req.params['id'];
-  if (!id) return badRequest('Which item?');
-
-  const body = ResolveBody.safeParse(await req.json().catch(() => ({})));
-  await rejectTask(decodeURIComponent(id), { id: session.memberId }, body.success ? body.data.note : undefined);
-  return json({ ok: true });
-}
+export const postApprove = resolveHandler('approve');
+export const postReject = resolveHandler('reject');
 
 /** POST /api/admin/materialize — for when a parent adds a chore and wants it now. */
 export async function postMaterialize(req: HttpRequest): Promise<HttpResponseInit> {
@@ -105,8 +108,8 @@ export async function postMaterialize(req: HttpRequest): Promise<HttpResponseIni
   return json(result);
 }
 
-/** Maps TaskError alongside AuthError. */
-function taskGuard(handler: (req: HttpRequest) => Promise<HttpResponseInit>) {
+/** Maps TaskError alongside AuthError. Shared with the points endpoints. */
+export function taskGuard(handler: (req: HttpRequest) => Promise<HttpResponseInit>) {
   return guarded(async (req) => {
     try {
       return await handler(req);

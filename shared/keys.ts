@@ -356,6 +356,7 @@ export const CONFIG_ROWS = {
   rev: 'rev',
   materialization: 'materialization',
   oauthState: 'oauth_state',
+  wildcards: 'wildcards',
 } as const;
 
 export type ConfigRow = (typeof CONFIG_ROWS)[keyof typeof CONFIG_ROWS];

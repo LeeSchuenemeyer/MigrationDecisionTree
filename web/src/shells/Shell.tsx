@@ -16,6 +16,7 @@ const NAV = [
   { to: '/', label: 'Board', end: true },
   { to: '/calendar', label: 'Calendar', end: false },
   { to: '/points', label: 'Points', end: false },
+  { to: '/rewards', label: 'Rewards', end: false },
   { to: '/queue', label: 'Approvals', end: false },
   { to: '/me', label: 'Me', end: false },
 ] as const;
