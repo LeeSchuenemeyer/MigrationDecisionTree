@@ -116,7 +116,15 @@ describe('authorize URL', () => {
     expect(url.searchParams.get('access_type')).toBe('offline');
     expect(url.searchParams.get('prompt')).toBe('consent');
     expect(url.searchParams.get('state')).toBe('state-123');
-    expect(url.searchParams.get('scope')).toContain('calendar.readonly');
+  });
+
+  it('requests the write scope, so a fresh consent can edit', () => {
+    // Phase 6 asked for calendar.readonly. Phase 7 asks for calendar.events,
+    // which is why an already-connected household needs one re-consent — Google
+    // will not widen an existing grant on its own.
+    const scope = new URL(authorizeUrl('state-123')).searchParams.get('scope');
+    expect(scope).toContain('auth/calendar.events');
+    expect(scope).not.toContain('calendar.readonly');
   });
 });
 

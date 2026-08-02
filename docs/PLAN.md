@@ -525,8 +525,33 @@ the kiosk polls all day. That is also the only mode available locally, since
 Google cannot reach localhost — so the fallback path is the one that gets
 exercised during development, which is the right way round.
 
+**Phase 7 as built.** Three things are worth recording:
 
+- **The scope widening is a product state, not a migration.** A household
+  connected under Phase 6 keeps a `calendar.readonly` token, and Google will not
+  upgrade a grant silently. So `canWrite` is derived from the stored scope,
+  carried all the way to the client in `/api/google/status`, and the UI simply
+  withholds the editing affordances — no add button, rows not tappable, one line
+  of explanation for a parent. The alternative, letting the buttons render and
+  403, converts a one-time consent step into an unexplained failure on a
+  kitchen wall.
 
+- **Google is written first, and its answer is what gets stored — never the
+  input.** Google assigns the id, normalizes the times, and returns the etag.
+  Storing our own version instead leaves a local row that no subsequent sync can
+  match, which is the same class of bug as a malformed row key and just as
+  silent.
+
+- **`markLocalEdit` opens the echo window *before* the push, not after.** The
+  webhook genuinely can arrive before the push response is persisted; a marker
+  written afterwards is a marker written too late. This is why the third echo
+  layer exists at all — layers 1 and 2 both depend on having already stored
+  something about a request that may not have returned yet.
+
+`deleteEvent` needed a rename to land: the private sync-side "remote said this
+is gone" path and the new exported "the family deleted this" path had the same
+name, which `tsc` reports but only after both exist. The private one is now
+`applyRemoteDeletion`, which is also the more honest name for what it does.
 
 
 ## 9. Verification

@@ -25,8 +25,21 @@ const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 
-/** Read-only for Phase 6. Phase 7 widens this to `calendar.events`. */
+/**
+ * Scopes.
+ *
+ * `calendar.events` is read AND write on events — it supersedes
+ * `calendar.readonly`, so a household connected before Phase 7 holds a token
+ * that can read but not write. That is handled rather than errored: reads keep
+ * working, write controls are hidden, and a parent is told once that
+ * reconnecting enables editing. Asking for write access before anything writes
+ * would have been the wrong trade.
+ */
 export const READONLY_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+export const WRITE_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+
+/** What we ask for now. Existing read-only tokens keep working until reconnect. */
+export const REQUESTED_SCOPE = WRITE_SCOPE;
 
 interface OAuthRow {
   /** AES-256-GCM. Never stored or logged in plaintext. */
@@ -47,6 +60,8 @@ interface OAuthRow {
 
 export interface GoogleConnection {
   connected: boolean;
+  /** False for a token minted before Phase 7 — reads fine, cannot write. */
+  canWrite: boolean;
   calendarId: string | null;
   calendarSummary: string | null;
   connectedAt: string | null;
@@ -70,11 +85,28 @@ async function writeRow(patch: Partial<OAuthRow>): Promise<void> {
   });
 }
 
+/**
+ * Can this connection write?
+ *
+ * Checked against the *stored* scope rather than what we currently request, so
+ * a household that connected during Phase 6 is correctly reported as read-only
+ * instead of being handed write controls that 403 on use.
+ */
+export function scopeAllowsWrite(scope: string | null | undefined): boolean {
+  return typeof scope === 'string' && scope.includes(WRITE_SCOPE);
+}
+
+export async function canWrite(): Promise<boolean> {
+  const row = await readRow();
+  return Boolean(row?.refreshTokenEncrypted) && scopeAllowsWrite(row?.scope);
+}
+
 export async function connectionStatus(): Promise<GoogleConnection> {
   const row = await readRow();
   if (!row?.refreshTokenEncrypted) {
     return {
       connected: false,
+      canWrite: false,
       calendarId: null,
       calendarSummary: null,
       connectedAt: null,
@@ -84,6 +116,7 @@ export async function connectionStatus(): Promise<GoogleConnection> {
   }
   return {
     connected: true,
+    canWrite: scopeAllowsWrite(row.scope),
     calendarId: row.calendarId ?? null,
     calendarSummary: row.calendarSummary ?? null,
     connectedAt: row.connectedAt ?? null,
@@ -127,7 +160,7 @@ export function authorizeUrl(state: string): string {
     client_id: env.googleClientId,
     redirect_uri: env.googleRedirectUri,
     response_type: 'code',
-    scope: READONLY_SCOPE,
+    scope: REQUESTED_SCOPE,
     access_type: 'offline',
     prompt: 'consent',
     include_granted_scopes: 'true',
@@ -170,7 +203,7 @@ export async function exchangeCode(code: string, connectedBy: string): Promise<b
     refreshTokenEncrypted: encryptSecret(token.refresh_token),
     accessToken: token.access_token,
     accessTokenExpiresAt: new Date(Date.now() + token.expires_in * 1000).toISOString(),
-    scope: token.scope ?? READONLY_SCOPE,
+    scope: token.scope ?? REQUESTED_SCOPE,
     connectedBy,
     connectedAt: new Date().toISOString(),
     calendarId: null,
@@ -376,4 +409,135 @@ export async function watchEvents(
     resourceId: data.resourceId,
     expiration: new Date(Number(data.expiration ?? Date.now() + 6 * 86_400_000)).toISOString(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Writes
+// ---------------------------------------------------------------------------
+
+/**
+ * Marks an event as ours.
+ *
+ * `extendedProperties.private` is Google's own supported mechanism for
+ * application metadata: it round-trips through their storage, survives
+ * restarts, and is invisible to anyone reading the calendar normally.
+ * `fdOrigin` scopes it to this household (so two dashboards on one calendar do
+ * not claim each other's writes) and `fdRev` identifies the specific push,
+ * which is what makes "is this my own change coming back?" answerable rather
+ * than guessed.
+ */
+export interface EchoStamp {
+  fdOrigin: string;
+  fdRev: string;
+}
+
+export interface EventDraft {
+  summary: string;
+  description?: string | null;
+  location?: string | null;
+  /** Timed events. Mutually exclusive with `startDate`/`endDate`. */
+  startDateTime?: string;
+  endDateTime?: string;
+  /** All-day. `endDate` is exclusive, per Google. */
+  startDate?: string;
+  endDate?: string;
+}
+
+function draftToBody(draft: EventDraft, stamp: EchoStamp): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    summary: draft.summary,
+    extendedProperties: { private: { ...stamp } },
+  };
+  if (draft.description !== undefined) body['description'] = draft.description ?? '';
+  if (draft.location !== undefined) body['location'] = draft.location ?? '';
+
+  if (draft.startDate) {
+    body['start'] = { date: draft.startDate };
+    body['end'] = { date: draft.endDate ?? draft.startDate };
+  } else {
+    body['start'] = { dateTime: draft.startDateTime };
+    body['end'] = { dateTime: draft.endDateTime };
+  }
+  return body;
+}
+
+async function write<T>(
+  method: 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  body?: unknown,
+): Promise<T | null> {
+  const token = await accessToken();
+  if (!token) throw new GoogleError('Google is not connected.', 401);
+
+  const response = await fetch(`${CALENDAR_API}${path}`, {
+    method,
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new GoogleError(text.slice(0, 300) || response.statusText, response.status);
+  }
+  if (response.status === 204) return null;
+  return (await response.json()) as T;
+}
+
+export async function insertEvent(
+  calendarId: string,
+  draft: EventDraft,
+  stamp: EchoStamp,
+): Promise<GoogleEvent> {
+  const created = await write<GoogleEvent>(
+    'POST',
+    `/calendars/${encodeURIComponent(calendarId)}/events`,
+    draftToBody(draft, stamp),
+  );
+  if (!created) throw new GoogleError('Google returned no event.', 502);
+  return created;
+}
+
+export async function patchEvent(
+  calendarId: string,
+  googleEventId: string,
+  draft: EventDraft,
+  stamp: EchoStamp,
+): Promise<GoogleEvent> {
+  const updated = await write<GoogleEvent>(
+    'PATCH',
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
+    draftToBody(draft, stamp),
+  );
+  if (!updated) throw new GoogleError('Google returned no event.', 502);
+  return updated;
+}
+
+/**
+ * Delete, treating "already gone" as success.
+ *
+ * Google returns 404 for an event that never existed and 410 for one already
+ * deleted. Both mean the desired end state is reached — surfacing either as an
+ * error would make deleting something twice, or deleting something a family
+ * member already removed from their phone, look like a failure.
+ */
+export async function deleteRemoteEvent(
+  calendarId: string,
+  googleEventId: string,
+): Promise<'deleted' | 'already_gone'> {
+  try {
+    await write(
+      'DELETE',
+      `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
+    );
+    return 'deleted';
+  } catch (err) {
+    if (err instanceof GoogleError && (err.status === 404 || err.status === 410)) {
+      return 'already_gone';
+    }
+    throw err;
+  }
 }

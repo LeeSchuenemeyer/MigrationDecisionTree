@@ -3,9 +3,10 @@ import { app, type HttpRequest, type HttpResponseInit } from '@azure/functions';
 import { z } from 'zod';
 import { CONFIG_ROWS, TABLES, configPK, configRK } from '../../../shared/keys.js';
 import { addLocalDays, assertLocalDate, localDateNow } from '../../../shared/time.js';
-import { requireElevated, requireParent, requireRead } from '../lib/auth.js';
+import { requireElevated, requireMember, requireParent, requireRead } from '../lib/auth.js';
 import { env } from '../lib/env.js';
 import {
+  GoogleError,
   authorizeUrl,
   connectionStatus,
   disconnect,
@@ -18,7 +19,17 @@ import {
 } from '../lib/google.js';
 import { badRequest, error, json } from '../lib/http.js';
 import { getEntity, remove, upsert } from '../lib/tables.js';
-import { listEventsBetween, sync, syncState, upcomingEvents } from '../services/googleSync.js';
+import {
+  createEvent,
+  deleteEvent,
+  listConflicts,
+  listEventsBetween,
+  restoreConflictVersion,
+  sync,
+  syncState,
+  upcomingEvents,
+  updateEvent,
+} from '../services/googleSync.js';
 import { taskGuard } from './tasks.js';
 
 /**
@@ -294,3 +305,136 @@ app.http('google-sync', { route: 'google/sync', methods: ['POST'], authLevel: 'a
 app.http('google-webhook', { route: 'google/webhook', methods: ['POST'], authLevel: 'anonymous', handler: postWebhook });
 app.http('events', { route: 'events', methods: ['GET'], authLevel: 'anonymous', handler: taskGuard(getEvents) });
 app.http('events-upcoming', { route: 'events/upcoming', methods: ['GET'], authLevel: 'anonymous', handler: taskGuard(getUpcoming) });
+
+// ---------------------------------------------------------------------------
+// Write-back
+// ---------------------------------------------------------------------------
+
+const EventBody = z
+  .object({
+    title: z.string().min(1).max(200),
+    description: z.string().max(1000).nullish(),
+    location: z.string().max(300).nullish(),
+    allDay: z.boolean(),
+    startUtc: z.string().datetime().optional(),
+    endUtc: z.string().datetime().optional(),
+    startLocalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    endLocalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  })
+  .refine(
+    (v) => (v.allDay ? Boolean(v.startLocalDate) : Boolean(v.startUtc && v.endUtc)),
+    'An all-day event needs a date; a timed one needs a start and an end.',
+  )
+  .refine((v) => v.allDay || (v.endUtc ?? '') > (v.startUtc ?? ''), 'That event ends before it starts.');
+
+/**
+ * POST /api/events — create.
+ *
+ * requireMember, not requireParent. Adding a football match to the family
+ * calendar is not a privileged act, and a board where only parents can add
+ * anything is a board the kids stop opening.
+ */
+export async function postEvent(req: HttpRequest): Promise<HttpResponseInit> {
+  const session = await requireMember(req);
+
+  const parsed = EventBody.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return badRequest(parsed.error.issues[0]?.message ?? 'Could not read that event.');
+
+  try {
+    const event = await createEvent(parsed.data, {
+      id: session.memberId,
+      displayName: session.displayName,
+    });
+    return json({ event });
+  } catch (e) {
+    return googleFailure(e);
+  }
+}
+
+/** PATCH /api/events/{googleEventId} — edit. */
+export async function patchEventRoute(req: HttpRequest): Promise<HttpResponseInit> {
+  const session = await requireMember(req);
+
+  const id = req.params['id'];
+  if (!id) return badRequest('Which event?');
+
+  const parsed = EventBody.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return badRequest(parsed.error.issues[0]?.message ?? 'Could not read that event.');
+
+  try {
+    const event = await updateEvent(decodeURIComponent(id), parsed.data, {
+      id: session.memberId,
+      displayName: session.displayName,
+    });
+    return json({ event });
+  } catch (e) {
+    return googleFailure(e);
+  }
+}
+
+/**
+ * DELETE /api/events/{googleEventId}
+ *
+ * requireParent rather than requireMember: creating is cheap to undo, deleting
+ * someone else's dentist appointment from a wall tablet is not.
+ */
+export async function deleteEventRoute(req: HttpRequest): Promise<HttpResponseInit> {
+  const { session, member } = await requireParent(req);
+
+  const id = req.params['id'];
+  if (!id) return badRequest('Which event?');
+
+  try {
+    const result = await deleteEvent(decodeURIComponent(id), {
+      id: session.memberId,
+      displayName: member.displayName,
+    });
+    return json(result);
+  } catch (e) {
+    return googleFailure(e);
+  }
+}
+
+/** POST /api/events/{id}/restore — "actually, use mine" on a conflict. */
+export async function postRestore(req: HttpRequest): Promise<HttpResponseInit> {
+  const { session, member } = await requireParent(req);
+
+  const id = req.params['id'];
+  if (!id) return badRequest('Which event?');
+
+  try {
+    const event = await restoreConflictVersion(decodeURIComponent(id), {
+      id: session.memberId,
+      displayName: member.displayName,
+    });
+    return json({ event });
+  } catch (e) {
+    return googleFailure(e);
+  }
+}
+
+/** GET /api/events/conflicts — what still needs a decision. */
+export async function getConflicts(req: HttpRequest): Promise<HttpResponseInit> {
+  await requireRead(req);
+  return json({ conflicts: await listConflicts() });
+}
+
+/**
+ * Map a Google failure onto something a family can act on.
+ *
+ * A 403 here almost always means the household is still on a Phase 6
+ * read-only token, which is a "reconnect once" problem rather than a bug — so
+ * it says that rather than surfacing Google's own wording.
+ */
+function googleFailure(e: unknown): HttpResponseInit {
+  if (e instanceof GoogleError) {
+    return error(e.message, e.status >= 400 && e.status < 600 ? e.status : 502);
+  }
+  return error('Could not reach Google.', 502);
+}
+
+app.http('events-create', { route: 'events', methods: ['POST'], authLevel: 'anonymous', handler: taskGuard(postEvent) });
+app.http('events-update', { route: 'events/{id}', methods: ['PATCH'], authLevel: 'anonymous', handler: taskGuard(patchEventRoute) });
+app.http('events-delete', { route: 'events/{id}', methods: ['DELETE'], authLevel: 'anonymous', handler: taskGuard(deleteEventRoute) });
+app.http('events-restore', { route: 'events/{id}/restore', methods: ['POST'], authLevel: 'anonymous', handler: taskGuard(postRestore) });
+app.http('events-conflicts', { route: 'events/conflicts', methods: ['GET'], authLevel: 'anonymous', handler: taskGuard(getConflicts) });

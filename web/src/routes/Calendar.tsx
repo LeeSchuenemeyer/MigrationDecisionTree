@@ -1,12 +1,21 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   groupByDay,
+  lastDayOf,
+  localInputToUtc,
+  useConflicts,
   useConnectGoogle,
+  useCreateEvent,
+  useDeleteEvent,
   useEvents,
   useGoogleCalendars,
   useGoogleStatus,
   usePickCalendar,
+  useRestoreEvent,
+  useUpdateEvent,
+  utcToLocalInput,
   type CalendarEvent,
+  type EventDraft,
 } from '@/lib/calendar';
 import { useSession } from '@/lib/session';
 import { useSurface } from '@/lib/surface';
@@ -33,6 +42,15 @@ export function Calendar(): ReactNode {
 
   const events = useEvents(today, horizon);
   const isParent = session.data?.member?.role === 'parent';
+  const signedIn = Boolean(session.data?.member);
+
+  // Editing needs both halves: a write-scoped Google token *and* somebody
+  // actually signed in. An ambient kiosk showing the family calendar with no
+  // session is the normal resting state, and it is a read-only one.
+  const canEdit = Boolean(status.data?.canWrite) && signedIn;
+
+  const conflicts = useConflicts(Boolean(status.data?.connected) && isParent);
+  const [editing, setEditing] = useState<CalendarEvent | 'new' | null>(null);
 
   if (status.isPending) {
     return <p className="text-ink-faint p-6 text-sm">Loading…</p>;
@@ -55,12 +73,36 @@ export function Calendar(): ReactNode {
         surface === 'kiosk' ? 'overflow-hidden' : 'overflow-y-auto',
       ].join(' ')}
     >
-      <h2 className="font-display text-ink-dim flex items-baseline justify-between text-sm tracking-[0.16em] uppercase kiosk:text-lg">
-        {status.data.calendarSummary ?? 'Calendar'}
-        <span className="text-ink-faint font-mono text-xs tracking-normal kiosk:text-base">
-          next 30 days
-        </span>
+      <h2 className="font-display text-ink-dim flex items-baseline justify-between gap-3 text-sm tracking-[0.16em] uppercase kiosk:text-lg">
+        <span className="min-w-0 truncate">{status.data.calendarSummary ?? 'Calendar'}</span>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => setEditing('new')}
+            className="border-brand text-brand hover:bg-brand hover:text-ground min-h-touch kiosk:min-h-touch-kiosk shrink-0 rounded-full border px-4 text-xs tracking-[0.12em] uppercase transition-colors kiosk:px-6 kiosk:text-base"
+          >
+            + Add
+          </button>
+        ) : (
+          <span className="text-ink-faint shrink-0 font-mono text-xs tracking-normal kiosk:text-base">
+            next 30 days
+          </span>
+        )}
       </h2>
+
+      {/* A read-only token is a Phase 6 household that has not re-consented.
+          Everything still shows; only editing is missing, and saying which is
+          far kinder than letting the add button 403. */}
+      {status.data.connected && !status.data.canWrite && isParent && (
+        <p className="border-line bg-panel text-ink-faint rounded-md border px-3 py-2 text-xs kiosk:text-base">
+          This calendar is connected for reading only. Reconnect it in Settings to add and
+          edit events from here — Google asks for permission again, once.
+        </p>
+      )}
+
+      {(conflicts.data?.length ?? 0) > 0 && (
+        <ConflictBanner conflicts={conflicts.data ?? []} />
+      )}
 
       {/* A stale calendar is worth saying out loud — a wall display that has
           quietly stopped syncing looks exactly like one with nothing on. */}
@@ -86,33 +128,321 @@ export function Calendar(): ReactNode {
               {formatDayHeading(date, today)}
             </div>
             {dayEvents.map((event) => (
-              <EventRow key={event.id} event={event} />
+              <EventRow
+                key={event.id}
+                event={event}
+                onEdit={canEdit ? () => setEditing(event) : null}
+              />
             ))}
           </div>
         ))}
       </div>
+
+      {editing && (
+        <EventForm
+          // Keyed so the form's state is rebuilt from the event it is editing
+          // rather than carrying the previous one's fields across.
+          key={editing === 'new' ? 'new' : editing.id}
+          event={editing === 'new' ? null : editing}
+          canDelete={isParent}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </section>
   );
 }
 
-function EventRow({ event }: { event: CalendarEvent }): ReactNode {
-  return (
-    <div className="border-line border-l-brand/50 bg-panel grid grid-cols-[auto_1fr] items-baseline gap-3 rounded-md border border-l-[3px] px-3 py-2 kiosk:gap-5 kiosk:px-5 kiosk:py-3">
+function EventRow({
+  event,
+  onEdit,
+}: {
+  event: CalendarEvent;
+  onEdit: (() => void) | null;
+}): ReactNode {
+  const body = (
+    <>
       <span className="text-ink-dim w-16 font-mono text-xs tabular-nums kiosk:w-24 kiosk:text-lg">
         {/* All-day events genuinely have no time. Rendering one as 12:00am
             makes "Grandma visits" look like a midnight appointment. */}
         {event.allDay ? 'all day' : formatTime(event.startUtc)}
       </span>
       <span className="min-w-0">
-        <span className="block truncate kiosk:text-2xl">{event.title}</span>
+        <span className="block truncate kiosk:text-2xl">
+          {event.title}
+          {event.hasConflict && (
+            <span className="text-pending ml-2 align-middle text-xs kiosk:text-base" title="Edited in two places">
+              ⚠
+            </span>
+          )}
+        </span>
         {event.location && (
           <span className="text-ink-faint block truncate text-xs kiosk:text-base">
             {event.location}
           </span>
         )}
       </span>
+    </>
+  );
+
+  const shell =
+    'border-line border-l-brand/50 bg-panel grid w-full grid-cols-[auto_1fr] items-baseline gap-3 rounded-md border border-l-[3px] px-3 py-2 text-left kiosk:gap-5 kiosk:px-5 kiosk:py-3';
+
+  if (!onEdit) return <div className={shell}>{body}</div>;
+
+  return (
+    <button type="button" onClick={onEdit} className={`${shell} hover:bg-panel-2 min-h-touch kiosk:min-h-touch-kiosk transition-colors`}>
+      {body}
+    </button>
+  );
+}
+
+/**
+ * The conflict resolution surface.
+ *
+ * Deliberately one line and one button. A conflict means a remote edit
+ * overwrote a local one; Google already won and the calendar is consistent, so
+ * this is an offer to reverse that, not an error blocking anything.
+ */
+function ConflictBanner({ conflicts }: { conflicts: CalendarEvent[] }): ReactNode {
+  const restore = useRestoreEvent();
+
+  return (
+    <ul className="border-pending/40 bg-pending/10 flex flex-col gap-2 rounded-md border px-3 py-2">
+      {conflicts.map((event) => (
+        <li key={event.id} className="flex items-center justify-between gap-3">
+          <span className="text-pending min-w-0 truncate text-xs kiosk:text-base">
+            “{event.title}” was changed in Google after you edited it here.
+          </span>
+          <button
+            type="button"
+            disabled={restore.isPending}
+            onClick={() => restore.mutate(event.googleEventId)}
+            className="border-pending text-pending hover:bg-pending hover:text-ground min-h-touch kiosk:min-h-touch-kiosk font-display shrink-0 rounded-full border px-4 text-[10px] tracking-[0.12em] uppercase transition-colors disabled:opacity-50 kiosk:text-sm"
+          >
+            Use mine
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Add / edit / delete.
+ *
+ * A plain overlay rather than a Radix dialog: the kiosk has no keyboard-driven
+ * focus story to preserve, and every field here has to be finger-sized anyway.
+ */
+function EventForm({
+  event,
+  canDelete,
+  onClose,
+}: {
+  event: CalendarEvent | null;
+  canDelete: boolean;
+  onClose: () => void;
+}): ReactNode {
+  const create = useCreateEvent();
+  const update = useUpdateEvent();
+  const del = useDeleteEvent();
+
+  const [title, setTitle] = useState(event?.title ?? '');
+  const [location, setLocation] = useState(event?.location ?? '');
+  const [allDay, setAllDay] = useState(event?.allDay ?? false);
+
+  const [startLocalDate, setStartLocalDate] = useState(
+    event?.startLocalDate ?? new Date().toLocaleDateString('en-CA'),
+  );
+  const [endLocalDate, setEndLocalDate] = useState(
+    event?.allDay ? lastDayOf(event) : (event?.startLocalDate ?? new Date().toLocaleDateString('en-CA')),
+  );
+  const [startAt, setStartAt] = useState(
+    event && !event.allDay ? utcToLocalInput(event.startUtc) : defaultStart(),
+  );
+  const [endAt, setEndAt] = useState(
+    event && !event.allDay ? utcToLocalInput(event.endUtc) : defaultEnd(),
+  );
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const busy = create.isPending || update.isPending || del.isPending;
+  const failure = create.error ?? update.error ?? del.error;
+
+  const invalid =
+    title.trim().length === 0 || (allDay ? endLocalDate < startLocalDate : endAt <= startAt);
+
+  function submit() {
+    const draft: EventDraft = {
+      title: title.trim(),
+      location: location.trim() || null,
+      allDay,
+      ...(allDay
+        ? { startLocalDate, endLocalDate }
+        : { startUtc: localInputToUtc(startAt), endUtc: localInputToUtc(endAt) }),
+    };
+
+    const done = { onSuccess: onClose };
+    if (event) update.mutate({ googleEventId: event.googleEventId, draft }, done);
+    else create.mutate(draft, done);
+  }
+
+  return (
+    <div className="bg-ground/80 fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
+      <div className="border-line bg-panel flex max-h-full w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-t-xl border p-4 sm:rounded-xl kiosk:max-w-2xl kiosk:gap-5 kiosk:p-8">
+        <h3 className="font-display text-ink-dim text-sm tracking-[0.16em] uppercase kiosk:text-lg">
+          {event ? 'Edit event' : 'New event'}
+        </h3>
+
+        <Field label="What">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={200}
+            autoFocus
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Where (optional)">
+          <input
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            maxLength={300}
+            className={inputClass}
+          />
+        </Field>
+
+        <label className="min-h-touch kiosk:min-h-touch-kiosk flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={allDay}
+            onChange={(e) => setAllDay(e.target.checked)}
+            className="accent-brand h-5 w-5 kiosk:h-7 kiosk:w-7"
+          />
+          <span className="text-sm kiosk:text-xl">All day</span>
+        </label>
+
+        {allDay ? (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="From">
+              <input
+                type="date"
+                value={startLocalDate}
+                onChange={(e) => {
+                  setStartLocalDate(e.target.value);
+                  // Dragging the start past the end is a slip, not an intent.
+                  if (e.target.value > endLocalDate) setEndLocalDate(e.target.value);
+                }}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Through">
+              <input
+                type="date"
+                value={endLocalDate}
+                min={startLocalDate}
+                onChange={(e) => setEndLocalDate(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Starts">
+              <input
+                type="datetime-local"
+                value={startAt}
+                onChange={(e) => {
+                  const shift = new Date(e.target.value).getTime() - new Date(startAt).getTime();
+                  setStartAt(e.target.value);
+                  // Move the end with the start, preserving duration — moving an
+                  // hour-long thing to Thursday should not make it end Tuesday.
+                  if (Number.isFinite(shift)) {
+                    setEndAt(utcToLocalInput(new Date(new Date(endAt).getTime() + shift).toISOString()));
+                  }
+                }}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Ends">
+              <input
+                type="datetime-local"
+                value={endAt}
+                min={startAt}
+                onChange={(e) => setEndAt(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+        )}
+
+        {failure && (
+          <p className="text-overdue text-xs kiosk:text-base">{failure.message}</p>
+        )}
+
+        <div className="mt-1 flex items-center gap-2">
+          {event && canDelete && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                if (!confirmDelete) return setConfirmDelete(true);
+                del.mutate(event.googleEventId, { onSuccess: onClose });
+              }}
+              className="border-overdue text-overdue hover:bg-overdue hover:text-ground min-h-touch kiosk:min-h-touch-kiosk font-display mr-auto rounded-full border px-4 text-xs tracking-[0.12em] uppercase transition-colors disabled:opacity-50 kiosk:text-base"
+            >
+              {confirmDelete ? 'Really delete?' : 'Delete'}
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onClose}
+            className="border-line text-ink-dim hover:bg-panel-2 min-h-touch kiosk:min-h-touch-kiosk font-display ml-auto rounded-full border px-5 text-xs tracking-[0.12em] uppercase transition-colors disabled:opacity-50 kiosk:text-base"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={busy || invalid}
+            onClick={submit}
+            className="border-brand bg-brand/15 text-brand hover:bg-brand hover:text-ground min-h-touch kiosk:min-h-touch-kiosk font-display rounded-full border px-5 text-xs tracking-[0.12em] uppercase transition-colors disabled:opacity-40 kiosk:text-base"
+          >
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
     </div>
   );
+}
+
+const inputClass =
+  'border-line bg-ground min-h-touch kiosk:min-h-touch-kiosk w-full rounded-md border px-3 text-base kiosk:text-xl';
+
+function Field({ label, children }: { label: string; children: ReactNode }): ReactNode {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="font-display text-ink-faint text-[10px] tracking-[0.12em] uppercase kiosk:text-sm">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+/** Next round hour — the overwhelmingly common case for "add something now". */
+function defaultStart(): string {
+  const d = new Date();
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 1);
+  return utcToLocalInput(d.toISOString());
+}
+
+function defaultEnd(): string {
+  const d = new Date();
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 2);
+  return utcToLocalInput(d.toISOString());
 }
 
 function NotConnected({ canConnect }: { canConnect: boolean }): ReactNode {

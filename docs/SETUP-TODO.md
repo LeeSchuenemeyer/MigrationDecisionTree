@@ -258,9 +258,17 @@ It's the single biggest quality-of-life difference between "a browser tab on a w
       read, which bounds staleness at five minutes because the kiosk polls all day. It also
       can't work in local development, since Google can't reach localhost.
 
-      ⚠️ Phase 6 asks for **read-only** scope (`calendar.readonly`). Phase 7 widens it to
-      read-write, and Google will require re-consent at that point — that's expected, not a
-      bug. I'd rather not ask for write access before anything writes.
+- [ ] **Reconnect Google once, after Phase 7 ships.** Phase 6 asked for **read-only** scope
+      (`calendar.readonly`); Phase 7 widens it to `calendar.events` so the dashboard can
+      actually write. Google will not silently upgrade an existing grant, so an already
+      connected household stays read-only until a parent goes to the calendar screen and
+      reconnects. **This is expected, not a bug** — I'd rather not ask a family for write
+      access to their calendar before anything writes.
+
+      What a read-only household sees in the meantime: the calendar renders exactly as
+      before, the "+ Add" button is hidden, tapping an event does nothing, and a parent
+      gets one line explaining that reconnecting enables editing. Nothing errors and
+      nothing is lost — the same refresh token keeps working for reads.
 
 ---
 
