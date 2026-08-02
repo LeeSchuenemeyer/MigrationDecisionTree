@@ -460,6 +460,29 @@ that look arbitrary later:
 `services/tasks` ↔ `services/points` cycle is exactly what works under `tsc` and
 then breaks once esbuild reorders the bundle.
 
+**Phase 4 as built.** The pulse contract changed from what §2 sketched. The
+server does **not** compute "what changed since rev N" — it has no per-slice
+history to diff against, and the only approximation available (invalidate every
+slice with a non-zero counter) invalidates *everything* forever after the first
+write of each kind, which is the exact opposite of the point. Instead
+`/api/pulse` returns the full per-slice counter map (~120 bytes) and the client
+diffs it against its previous copy. Exact, no history required, same payload
+size. The global `rev` stays as the ETag, so an idle household — most hours of
+most days — gets a 304 with no body at all.
+
+The ticker interleaves activity with upcoming deadlines rather than
+concatenating them: a marquee is read in passing, so whatever is on screen when
+someone walks by is what they see, and forty activity items from a busy morning
+would mean nobody ever sees a deadline. It also collapses a chore's lifecycle to
+its latest state — "ticked off" and "cleared" both belong in the history, but
+showing them side by side in one strip looks broken.
+
+`prefers-reduced-motion` gets a genuinely different presentation, not a disabled
+animation: one item at a time on a timer, no movement. A horizontally scrolling
+strip in someone's peripheral vision all day is unpleasant in a way a web page
+is not, because a kitchen display is unavoidable.
+
+
 
 ## 9. Verification
 

@@ -73,12 +73,33 @@ export async function bumpRev(
   return next.rev;
 }
 
-/** Which slices changed since the client's last known revision. */
-export function changedSlices(current: RevEntity, sinceRev: number): RevSlice[] {
-  if (sinceRev >= current.rev) return [];
-  // Without per-slice history we cannot diff precisely, so any bump since the
-  // client's revision invalidates every slice whose counter is non-zero. The
-  // pulse payload stays ~150 bytes either way.
-  const all: RevSlice[] = ['members', 'tasks', 'queue', 'points', 'feed', 'events', 'rewards'];
-  return all.filter((s) => current[s] > 0);
+export const REV_SLICES: readonly RevSlice[] = [
+  'members',
+  'tasks',
+  'queue',
+  'points',
+  'feed',
+  'events',
+  'rewards',
+];
+
+export type SliceCounters = Record<RevSlice, number>;
+
+/**
+ * The per-slice counters, which is what `/api/pulse` actually returns.
+ *
+ * The server deliberately does NOT try to compute "what changed since rev N".
+ * It has no history to diff against, and the obvious approximation — invalidate
+ * every slice with a non-zero counter — invalidates *everything* forever after
+ * the first write of each kind, which is the exact opposite of the point.
+ *
+ * Instead the client keeps the previous map and diffs it locally. That is
+ * exact, needs no server-side history, and the payload is ~120 bytes either
+ * way. The `rev` field stays as the cheap ETag: unchanged rev means a 304 and
+ * no body at all, which is what an idle household gets all day.
+ */
+export function sliceCounters(current: RevEntity): SliceCounters {
+  const out = {} as SliceCounters;
+  for (const s of REV_SLICES) out[s] = current[s];
+  return out;
 }

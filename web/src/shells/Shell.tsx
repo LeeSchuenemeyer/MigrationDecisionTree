@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useSurface } from '@/lib/surface';
+import { usePulse } from '@/lib/pulse';
 import { SessionControl } from '@/components/SessionControl';
+import { Ticker } from '@/components/Ticker';
 
 /**
  * The surface shells.
@@ -23,6 +25,12 @@ const NAV = [
 
 export function Shell(): ReactNode {
   const surface = useSurface();
+
+  // Mounted once, here, for the whole app. This is the ONLY thing that polls;
+  // every other query sits at staleTime: Infinity and is invalidated by what
+  // this returns. See lib/pulse.ts.
+  usePulse();
+
   if (surface === 'kiosk') return <KioskShell />;
   if (surface === 'desktop') return <DesktopShell />;
   return <MobileShell />;
@@ -48,11 +56,12 @@ function KioskShell(): ReactNode {
 /** Phone: bottom tab bar, each tab scrolls independently, safe-area insets. */
 function MobileShell(): ReactNode {
   return (
-    <div className="grid h-full grid-rows-[auto_1fr_auto]">
+    <div className="grid h-full grid-rows-[auto_1fr_auto_auto]">
       <TopBar />
       <main className="min-h-0 overflow-y-auto">
         <Outlet />
       </main>
+      <Ticker />
       <nav
         className="border-line bg-panel flex justify-around border-t"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
@@ -156,7 +165,5 @@ function Clock(): ReactNode {
 }
 
 function TickerSlot(): ReactNode {
-  // The real ticker arrives in Phase 4; the slot is reserved now so the kiosk
-  // grid never reflows when it lands.
-  return <div className="border-line bg-panel h-12 border-t" aria-hidden="true" />;
+  return <Ticker />;
 }

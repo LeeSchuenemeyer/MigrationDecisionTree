@@ -161,7 +161,30 @@ export interface FeedItem {
   points: number | null;
   commentary: string | null;
   commentarySource: 'claude' | 'fallback' | null;
+  /** What this item is about, so the ticker can collapse one thing's lifecycle. */
+  refType: string | null;
+  refId: string | null;
   createdAt: string;
+}
+
+/**
+ * One line in the marquee.
+ *
+ * Flattened from feed items, upcoming deadlines, and (Phase 6) calendar events
+ * into a single shape, so the ticker component renders a list and never branches
+ * on where a line came from.
+ */
+export interface TickerItem {
+  id: string;
+  source: 'activity' | 'upcoming' | 'overdue' | 'event';
+  /** What is actually displayed. Claude's line when present, the fact otherwise. */
+  text: string;
+  detail: string | null;
+  icon: string | null;
+  points: number | null;
+  /** Small tag before the text: "Claude", "Next", "Overdue". Null for plain facts. */
+  label: string | null;
+  at: string;
 }
 
 // ---------------------------------------------------------------------------

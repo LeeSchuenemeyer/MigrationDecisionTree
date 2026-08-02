@@ -112,6 +112,19 @@ html[data-night='true'] body {
   transition: filter 1.2s ease;
 }
 
+/* The ticker belt. The strip holds two identical copies of the item list, so
+   translating by exactly -50% lands the second copy where the first began and
+   the loop has no seam. Percentage-based, so it works at any content width
+   without measuring anything. */
+@keyframes fd-ticker {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
