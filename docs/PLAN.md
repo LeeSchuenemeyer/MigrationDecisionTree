@@ -482,6 +482,31 @@ animation: one item at a time on a timer, no movement. A horizontally scrolling
 strip in someone's peripheral vision all day is unpleasant in a way a web page
 is not, because a kitchen display is unavoidable.
 
+**Phase 5 as built.** Two things diverge from §7, both discovered in the code:
+
+- **Per-model request surfaces are not interchangeable.** `effort` *errors* on
+  `claude-haiku-4-5`, so the ticker job omits it rather than setting it low.
+  `claude-opus-5` thinks by default and `max_tokens` caps thinking **plus**
+  output, so the keepsake job budgets ~2000 for a 200-token badge; disabling
+  thinking there is only legal at effort <= `high` and risks internal tags
+  leaking into the JSON, so it stays on. Sonnet 5 disables thinking outright —
+  naming a badge is a creative micro-task, not a reasoning problem.
+- **Budget is spent *before* the call, not after.** An in-flight request that
+  never returns still consumed quota; counting only successes is exactly how a
+  timeout loop escapes the cap it exists to enforce.
+
+`POST /api/cron/tick` landed here rather than in Phase 9, because batched
+commentary and the daily challenge have no other driver. The remaining tick jobs
+(reconciler, session sweep, Google channel renewal) still belong to Phase 9.
+
+**A bug worth recording: Table Storage omits null properties rather than storing
+them.** A field written as `null` reads back `undefined`, so
+`commentary === null` matched nothing and the ticker would never have received a
+single line. Fixed at both ends — `== null` in the filter, `?? null` coercion in
+the DTO mapper — and it is a trap for every nullable field in the schema, not
+just this one.
+
+
 
 
 ## 9. Verification

@@ -161,10 +161,43 @@ It's the single biggest quality-of-life difference between "a browser tab on a w
 - [ ] **Use a separate, lower-limit key for the preview environment** so a broken loop in a
       PR can't drain production quota.
 
-- [ ] **Read the PG-13 rubric and tell me if it's wrong for your family.** I'll put the exact
-      banned/allowed lists in front of you when Phase 5 lands. The realistic failure mode of
-      this whole project isn't technical — it's a generated quip that lands as mocking one
-      kid, displayed permanently on a kitchen wall. Your calibration beats mine.
+- [ ] 🚨 **Read the PG-13 rubric below and tell me if it's wrong for your family.** This is
+      the one item on this whole list where your judgement genuinely beats mine. The
+      realistic failure mode of this project isn't technical — it's a generated quip that
+      lands as mocking one kid, on a kitchen wall, for a week.
+
+      **The rule everything hangs off:** *tease the task, never the child.*
+
+      | Allowed | Banned, without exception |
+      |---|---|
+      | Comic-book bombast about the chore | Profanity, including minced oaths (heck, darn, frick) |
+      | Playful exaggeration of the event | Anything sexual, substance-related, or violent beyond cartoon |
+      | Gentle teasing of the mess, the deadline, the laundry | Any comment on bodies, weight, appearance, or eating |
+      | Dry understatement | Any comment on intelligence, character, laziness, effort, or worth |
+      | Invented ranks and titles on badges | Comparing one family member to another, in any direction |
+      | | Sarcasm aimed at a *person* rather than an *event* |
+      | | Medical, religious, political |
+      | | Links, @-mentions, ALL CAPS, hashtags |
+
+      Examples it's told are **good**: *"The dishwasher never stood a chance."* ·
+      *"Another sock rescued from under the bed."* · *"That deadline never saw it coming."*
+
+      Examples it's told are **bad, with the reason** (this half does more work than every
+      instruction above it): *"Finally, some effort from Theo."* — implies he's usually lazy ·
+      *"Maya did better than her brother today."* — compares siblings · *"About time someone
+      cleaned this pigsty."* — insults your home.
+
+      **Six layers enforce it**, so no single one has to be perfect: the frozen rubric above,
+      the good/bad few-shot examples, structured output (fields, not free prose), a
+      deterministic post-filter (`shared/pg13.ts` — de-leetspeaks, strips zero-width
+      characters, and rejects a member's name within four words of a negative adjective),
+      fail-closed fallback to hand-written copy, and your two controls: a commentary
+      on/off toggle and a one-tap **✕** on any Claude-written ticker line.
+
+      **What I need from you:** anything in the banned column that's too strict for your
+      family, anything missing, and any household-specific words to add — inside jokes,
+      nicknames, "the incident" — that would land badly on a wall. Those go in the
+      per-household denylist, which the filter checks in addition to the built-in list.
 
 ---
 

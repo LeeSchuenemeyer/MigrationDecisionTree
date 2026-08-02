@@ -4,6 +4,7 @@ import { useCompleteTask, useTasks } from '@/lib/tasks';
 import { useMembers, useSession } from '@/lib/session';
 import { useSurface } from '@/lib/surface';
 import { TaskCard } from '@/components/TaskCard';
+import { useChallenge } from '@/lib/claude';
 
 /**
  * Today's board.
@@ -20,6 +21,7 @@ export function Board(): ReactNode {
   const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
   const tasks = useTasks(today);
   const complete = useCompleteTask(today, today);
+  const challenge = useChallenge();
 
   const me = session.data?.member ?? null;
 
@@ -74,6 +76,23 @@ export function Board(): ReactNode {
           {remaining} left
         </span>
       </h2>
+
+      {/* One goal for the whole family. Present whether or not generation is
+          available — there are 30 hand-written challenges behind it. */}
+      {challenge.data && (
+        <div className="border-line border-l-brand bg-panel flex items-center gap-3 rounded-md border border-l-[3px] px-3 py-2 kiosk:px-5 kiosk:py-3">
+          <span aria-hidden="true" className="text-lg kiosk:text-3xl">
+            🎯
+          </span>
+          <span className="min-w-0">
+            <span className="font-display text-ink-faint block text-[10px] tracking-[0.14em] uppercase kiosk:text-sm">
+              Today&rsquo;s challenge
+              {challenge.data.source === 'claude' && ' · Claude'}
+            </span>
+            <span className="block truncate text-sm kiosk:text-xl">{challenge.data.text}</span>
+          </span>
+        </div>
+      )}
 
       <div
         className={[

@@ -21,20 +21,29 @@ import { listTasksForDate } from './tasks.js';
 
 const TICKER_LIMIT = 40;
 
+/**
+ * Storage row → wire shape.
+ *
+ * Every nullable field is coerced with `?? null`. Table Storage does not store
+ * null properties — it omits them — so a field written as null comes back
+ * `undefined`. Left uncoerced, the DTO's declared `string | null` is a lie,
+ * `JSON.stringify` drops the key entirely, and any `=== null` comparison
+ * downstream silently never matches.
+ */
 function toItem(row: FeedEntity & { rowKey: string }): FeedItem {
   return {
     id: row.rowKey,
     kind: row.kind,
-    actorName: row.actorName,
-    actorAvatar: row.actorAvatar,
+    actorName: row.actorName ?? null,
+    actorAvatar: row.actorAvatar ?? null,
     headline: row.headline,
-    detail: row.detail,
-    icon: row.icon,
-    points: row.points,
-    commentary: row.commentary,
-    commentarySource: row.commentarySource,
-    refType: row.refType,
-    refId: row.refId,
+    detail: row.detail ?? null,
+    icon: row.icon ?? null,
+    points: row.points ?? null,
+    commentary: row.commentary ?? null,
+    commentarySource: row.commentarySource ?? null,
+    refType: row.refType ?? null,
+    refId: row.refId ?? null,
     createdAt: row.createdAt,
   };
 }

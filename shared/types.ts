@@ -449,3 +449,68 @@ export interface LeaderboardRow {
   streakMultiplier: number;
   streakAlive: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Achievements
+// ---------------------------------------------------------------------------
+
+export interface AchievementDefEntity {
+  name: string;
+  description: string;
+  /** JSON-encoded Criteria from shared/achievements.ts. */
+  criteriaJson: string;
+  tier: string;
+  icon: string;
+  pointsReward: number;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface AchievementAwardEntity {
+  /** Denormalized so the trophy case renders from one query with no fan-out. */
+  name: string;
+  description: string;
+  flavorText: string | null;
+  tier: string;
+  icon: string;
+  pointsAwarded: number;
+  /** 'claude' when generated, 'fallback' when hand-written copy was used. */
+  copySource: 'claude' | 'fallback';
+  copyModel: string | null;
+  earnedAt: string;
+}
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  flavorText: string | null;
+  tier: string;
+  icon: string;
+  pointsAwarded: number;
+  copySource: 'claude' | 'fallback';
+  earnedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Claude integration — parent-facing status and controls
+// ---------------------------------------------------------------------------
+
+export interface CommentaryStatus {
+  /** False when no API key is set; the ticker runs on hand-written copy. */
+  configured: boolean;
+  /** The parent toggle. Off means facts only, and nothing breaks. */
+  enabled: boolean;
+  budget: { job: string; used: number; cap: number }[];
+  /** Items a parent flagged with "that wasn't ok", newest first. */
+  incidents: CommentaryIncident[];
+}
+
+export interface CommentaryIncident {
+  id: string;
+  headline: string;
+  commentary: string | null;
+  reason: string;
+  reportedBy: string | null;
+  reportedAt: string;
+}

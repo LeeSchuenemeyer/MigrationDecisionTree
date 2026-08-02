@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { TickerItem } from '@shared/types';
 import { useTicker } from '@/lib/pulse';
+import { useSuppressFeedItem } from '@/lib/claude';
+import { useSession } from '@/lib/session';
 
 /**
  * The marquee along the bottom of the wall display.
@@ -24,7 +26,20 @@ import { useTicker } from '@/lib/pulse';
 export function Ticker(): ReactNode {
   const ticker = useTicker();
   const reduced = usePrefersReducedMotion();
+  const session = useSession();
+  const suppress = useSuppressFeedItem();
   const items = ticker.data ?? [];
+
+  // The "that wasn't ok" control is parent-only and appears on hover/long-press
+  // rather than permanently: a dismiss button on every line would invite a kid
+  // to quietly delete anything they did not like about the day.
+  const canSuppress = session.data?.member?.role === 'parent';
+  const onSuppress = canSuppress
+    ? (item: TickerItem) => {
+        if (!item.id.startsWith('feed:')) return;
+        suppress.mutate({ id: item.id.slice('feed:'.length) });
+      }
+    : undefined;
 
   if (items.length === 0) {
     return (
@@ -34,10 +49,20 @@ export function Ticker(): ReactNode {
     );
   }
 
-  return reduced ? <RotatingTicker items={items} /> : <ScrollingTicker items={items} />;
+  return reduced ? (
+    <RotatingTicker items={items} onSuppress={onSuppress} />
+  ) : (
+    <ScrollingTicker items={items} onSuppress={onSuppress} />
+  );
 }
 
-function ScrollingTicker({ items }: { items: TickerItem[] }): ReactNode {
+function ScrollingTicker({
+  items,
+  onSuppress,
+}: {
+  items: TickerItem[];
+  onSuppress?: (item: TickerItem) => void;
+}): ReactNode {
   // Roughly 55px per second reads comfortably at across-the-room distance.
   // Estimated from character count rather than measured, because measuring
   // would mean a layout read on every poll for a number that only needs to be
@@ -59,7 +84,7 @@ function ScrollingTicker({ items }: { items: TickerItem[] }): ReactNode {
         {/* Duplicated so the belt wraps seamlessly: by the time the first copy
             has scrolled fully off, the second is exactly where it started. */}
         {items.map((item) => (
-          <TickerLine key={item.id} item={item} />
+          <TickerLine key={item.id} item={item} onSuppress={onSuppress} />
         ))}
         {items.map((item) => (
           <TickerLine key={`${item.id}:dup`} item={item} ariaHidden />
@@ -69,7 +94,13 @@ function ScrollingTicker({ items }: { items: TickerItem[] }): ReactNode {
   );
 }
 
-function RotatingTicker({ items }: { items: TickerItem[] }): ReactNode {
+function RotatingTicker({
+  items,
+  onSuppress,
+}: {
+  items: TickerItem[];
+  onSuppress?: (item: TickerItem) => void;
+}): ReactNode {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -85,7 +116,7 @@ function RotatingTicker({ items }: { items: TickerItem[] }): ReactNode {
       className="border-line bg-panel flex h-12 items-center overflow-hidden border-t px-5 kiosk:h-16"
       aria-live="off"
     >
-      {item && <TickerLine item={item} flush />}
+      {item && <TickerLine item={item} flush onSuppress={onSuppress} />}
     </div>
   );
 }
@@ -94,10 +125,12 @@ function TickerLine({
   item,
   ariaHidden,
   flush,
+  onSuppress,
 }: {
   item: TickerItem;
   ariaHidden?: boolean;
   flush?: boolean;
+  onSuppress?: (item: TickerItem) => void;
 }): ReactNode {
   const labelColor =
     item.source === 'overdue'
@@ -140,6 +173,20 @@ function TickerLine({
           {item.points > 0 ? '+' : ''}
           {item.points}
         </span>
+      )}
+
+      {/* Only offered on Claude-written lines: a parent has no reason to
+          suppress the plain fact that a chore was finished. */}
+      {onSuppress && !ariaHidden && item.label === 'Claude' && (
+        <button
+          type="button"
+          onClick={() => onSuppress(item)}
+          title="That wasn’t ok — take it down"
+          aria-label="Remove this line"
+          className="border-line text-ink-faint hover:border-overdue hover:text-overdue ml-1 rounded-full border px-2 text-[10px] leading-5 transition-colors kiosk:text-sm"
+        >
+          ✕
+        </button>
       )}
 
       <span aria-hidden="true" className="text-ink-faint px-1">

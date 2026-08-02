@@ -20,6 +20,7 @@ import {
   type LocalDate,
 } from '../../../shared/time.js';
 import type {
+  Achievement,
   ActionQueueEntity,
   LedgerEntity,
   MemberEntity,
@@ -42,8 +43,35 @@ import {
   upsert,
 } from '../lib/tables.js';
 import { evaluateStreak, readStreak } from './points.js';
+import { evaluateAchievements, statsFor } from './achievements.js';
 
 type InstanceRow = TaskInstanceEntity & { partitionKey: string; rowKey: string; etag: string };
+
+/** Incremental achievement counters, carried on the member row. */
+interface CounterFields {
+  tasksCompleted?: number;
+  categoriesJson?: string;
+  earlyCompletions?: number;
+  wildcardsClaimed?: number;
+}
+
+/**
+ * Per-category tally, stored as JSON on the member row.
+ *
+ * Table Storage has no nested types, so a small map lives as a string. Kept
+ * here rather than in a separate table because it is only ever read and
+ * written alongside the row it belongs to.
+ */
+function bumpCategory(json: string | undefined, taskDefId: string): string {
+  let map: Record<string, number> = {};
+  try {
+    map = json ? (JSON.parse(json) as Record<string, number>) : {};
+  } catch {
+    map = {};
+  }
+  map[taskDefId] = (map[taskDefId] ?? 0) + 1;
+  return JSON.stringify(map);
+}
 
 // ---------------------------------------------------------------------------
 // Reads
@@ -246,7 +274,7 @@ export async function completeTask(
 export async function approveTask(
   queueRowKey: string,
   approver: { id: string; displayName: string },
-): Promise<{ awarded: number; memberId: string }> {
+): Promise<{ awarded: number; memberId: string; achievements?: Achievement[] }> {
   const queueRow = await getEntity<ActionQueueEntity>(
     TABLES.actionQueue,
     actionQueuePK(env.householdId),
@@ -269,7 +297,7 @@ export async function approveTask(
   // ---- 1. Idempotency gate -------------------------------------------------
   if (row.status === 'approved') {
     await remove(TABLES.actionQueue, queueRow.partitionKey, queueRow.rowKey);
-    return { awarded: row.awardedPoints ?? 0, memberId: row.assignedMemberId };
+    return { awarded: row.awardedPoints ?? 0, memberId: row.assignedMemberId, achievements: [] };
   }
   if (row.status !== 'pending') {
     throw new TaskError('That chore is not waiting for approval.', 409);
@@ -314,7 +342,15 @@ export async function approveTask(
   });
 
   // ---- 4. Balance cache, ETag-conditional ---------------------------------
-  await updateWithRetry<MemberEntity>(
+  // Achievement counters ride along in the same ETag-guarded write. Keeping
+  // them incremental is what makes evaluation cheap enough to run on every
+  // approval — the alternative is a full history scan in the write path.
+  const wasWildcard = row.multiplier > 1;
+  const wasEarly =
+    row.dueTimeLocal !== null &&
+    now < localDateTimeMs(row.dueDateLocal, row.dueTimeLocal, env.timezone);
+
+  await updateWithRetry<MemberEntity & CounterFields>(
     TABLES.members,
     memberPK(env.householdId),
     memberRK(memberId),
@@ -324,6 +360,10 @@ export async function approveTask(
       pointsBalance: (current.pointsBalance ?? 0) + awarded,
       lifetimePoints: (current.lifetimePoints ?? 0) + awarded,
       pendingPoints: Math.max(0, (current.pendingPoints ?? 0) - awarded),
+      tasksCompleted: (current.tasksCompleted ?? 0) + 1,
+      categoriesJson: bumpCategory(current.categoriesJson, row.taskDefId),
+      ...(wasEarly ? { earlyCompletions: (current.earlyCompletions ?? 0) + 1 } : {}),
+      ...(wasWildcard ? { wildcardsClaimed: (current.wildcardsClaimed ?? 0) + 1 } : {}),
     }),
   );
 
@@ -351,8 +391,14 @@ export async function approveTask(
     // Deliberately swallowed; see above.
   }
 
+  // ---- 7. Achievements, synchronously ------------------------------------
+  // A child is standing at the tablet waiting for the badge, so this runs
+  // inline rather than on the next tick. evaluateAchievements never throws —
+  // a slow or missing API costs a hand-written badge name, not an approval.
+  const badges = await evaluateAchievements(memberId, await statsFor(memberId));
+
   await bumpRev(['tasks', 'queue', 'points', 'members']);
-  return { awarded, memberId };
+  return { awarded, memberId, achievements: badges };
 }
 
 /** Send a chore back. Points never landed, so only the pending cache unwinds. */
