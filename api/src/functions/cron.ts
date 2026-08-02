@@ -9,6 +9,8 @@ import { annotateRecentFeed, fillFallbackCommentary } from '../services/commenta
 import { ensureChallenge } from '../services/challenge.js';
 import { expireOverdue, materialize } from '../services/materializer.js';
 import { listTasksForDate, today } from '../services/tasks.js';
+import { ensureWatchChannel } from './google.js';
+import { sync as googleSync } from '../services/googleSync.js';
 
 /**
  * POST /api/cron/tick — the timer trigger SWA does not have.
@@ -65,6 +67,12 @@ export async function postTick(req: HttpRequest): Promise<HttpResponseInit> {
   results['commentaryBackfill'] = await attempt(() =>
     fillFallbackCommentary(addLocalDays(date, -1)),
   );
+
+  // Google: renew the push channel before it lapses, and force a sync. The
+  // webhook is the fast path, but channels expire in about a week and this is
+  // the only thing that notices.
+  results['googleChannel'] = await attempt(() => ensureWatchChannel());
+  results['googleSync'] = await attempt(() => googleSync({ force: true }));
 
   return json({ ok: true, results });
 }

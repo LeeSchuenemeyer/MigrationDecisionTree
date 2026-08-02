@@ -10,6 +10,7 @@ import type { FeedEntity, FeedItem, TaskInstance, TickerItem } from '../../../sh
 import { env } from '../lib/env.js';
 import { listPartition } from '../lib/tables.js';
 import { listTasksForDate } from './tasks.js';
+import { upcomingEvents, type CalendarEvent } from './googleSync.js';
 
 /**
  * The activity feed and the ticker built on top of it.
@@ -111,7 +112,13 @@ export async function recentFeed(limit = TICKER_LIMIT): Promise<FeedItem[]> {
  */
 export async function tickerItems(): Promise<TickerItem[]> {
   const today = localDateNow(env.timezone);
-  const [feed, tasks] = await Promise.all([recentFeed(), listTasksForDate(today)]);
+  const [feed, tasks, events] = await Promise.all([
+    recentFeed(),
+    listTasksForDate(today),
+    // Best-effort: a calendar that is unreachable, unconfigured, or mid-sync
+    // must not take the ticker down with it.
+    upcomingEvents(4).catch(() => []),
+  ]);
 
   const activity: TickerItem[] = collapseByRef(feed).map((f) => ({
     id: `feed:${f.id}`,
@@ -126,9 +133,27 @@ export async function tickerItems(): Promise<TickerItem[]> {
     at: f.createdAt,
   }));
 
-  const upcoming = upcomingFromTasks(tasks, today);
+  const upcoming = [...upcomingFromTasks(tasks, today), ...fromEvents(events)].sort((a, b) =>
+    a.at < b.at ? -1 : a.at > b.at ? 1 : 0,
+  );
 
   return interleave(activity, upcoming);
+}
+
+/** Calendar events, folded into the same shape as chore deadlines. */
+function fromEvents(events: CalendarEvent[]): TickerItem[] {
+  return events.map((event) => ({
+    id: `event:${event.id}`,
+    source: 'event' as const,
+    text: event.allDay
+      ? `${event.title} — all day`
+      : `${event.title} at ${formatLocalTime(Date.parse(event.startUtc), env.timezone)}`,
+    detail: event.location,
+    icon: '📅',
+    points: null,
+    label: 'Calendar',
+    at: event.startUtc,
+  }));
 }
 
 /**

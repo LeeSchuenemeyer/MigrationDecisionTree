@@ -9,6 +9,7 @@ import { Board } from './routes/Board';
 import { Queue } from './routes/Queue';
 import { Points } from './routes/Points';
 import { Rewards } from './routes/Rewards';
+import { Calendar } from './routes/Calendar';
 import { Placeholder } from './routes/Placeholder';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -34,7 +35,7 @@ const router = createBrowserRouter([
     element: <Shell />,
     children: [
       { index: true, element: <Board /> },
-      { path: 'calendar', element: <Placeholder title="Calendar" phase="Phase 6" /> },
+      { path: 'calendar', element: <Calendar /> },
       { path: 'points', element: <Points /> },
       { path: 'queue', element: <Queue /> },
       { path: 'rewards', element: <Rewards /> },

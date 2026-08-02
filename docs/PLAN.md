@@ -506,6 +506,26 @@ single line. Fixed at both ends — `== null` in the filter, `?? null` coercion 
 the DTO mapper — and it is a trap for every nullable field in the schema, not
 just this one.
 
+**Phase 6 as built.** The plan specified `google-auth-library` + raw fetch;
+building it removed the library too. What the OAuth flow actually needs is an
+authorize URL, a code exchange, and a refresh — three POSTs to one endpoint. The
+library's value is service-account JWT signing and ADC discovery, neither of
+which applies to a single household connection. Dropping it also *resolves* the
+`node >= 22` vs pinned `node:20` conflict rather than deferring it, and shrinks
+the bundle. **Zero Google dependencies in `api/package.json`.**
+
+Phase 6 requests `calendar.readonly`, not read-write. Phase 7 widens the scope
+and Google will require re-consent at that point — an expected, one-time cost,
+and better than asking a family for write access to their calendar before
+anything writes.
+
+`GOOGLE_WEBHOOK_URL` is optional. Unset, no push channel is created and the
+calendar syncs lazily on read, which bounds staleness at five minutes because
+the kiosk polls all day. That is also the only mode available locally, since
+Google cannot reach localhost — so the fallback path is the one that gets
+exercised during development, which is the right way round.
+
+
 
 
 

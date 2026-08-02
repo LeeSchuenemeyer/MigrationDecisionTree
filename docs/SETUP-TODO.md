@@ -75,11 +75,17 @@ just has nowhere to put data.
 - [x] ~~**Which tablet?**~~ **Decided: Android tablets and phones, plus an LG StanbyME 2.**
       See §2a below — the StanbyME needs one check from you before I can finish Phase 8.
 
-- [ ] **Node 20 vs 22.** Some `@azure/core-*` packages now declare `node >=22` while the SWA
-      runtime is pinned to `node:20`. It works today — they're transitive deps of
-      `@azure/data-tables`, which itself declares `node >=20`. If you can check whether your
-      SWA supports `apiRuntime: "node:22"`, I'd rather move deliberately than inherit a
-      silent mismatch. Not urgent.
+- [x] ~~**Node 20 vs 22.**~~ **Resolved by not taking the dependency.** The plan called for
+      `google-auth-library`, which declares `node >=22` against our pinned `node:20`. Building
+      Phase 6 made the case for dropping it: what we actually needed was an authorize URL, a
+      code exchange, and a refresh — three POSTs to one endpoint, ~60 lines of `fetch`. The
+      library's value is service-account JWT signing and ADC discovery, neither of which
+      applies to a single household OAuth connection. So there is no engine conflict to
+      resolve, and the bundle is smaller.
+
+      Still true but harmless: a few transitive `@azure/core-*` packages declare `node >=22`.
+      They're dependencies of `@azure/data-tables`, which itself declares `node >=20`, and
+      everything works. Worth a look if you ever move to `apiRuntime: "node:22"`, not before.
 
 ---
 
@@ -245,6 +251,17 @@ It's the single biggest quality-of-life difference between "a browser tab on a w
       Google Calendar.** Full RRULE round-tripping is a bigger job than the entire points
       economy, so it's deliberately out of scope. Tell me now if that's not acceptable.
 
+- [ ] **Optional: `GOOGLE_WEBHOOK_URL`.** Set it to
+      `https://<your-swa>.azurestaticapps.net/api/google/webhook` and the calendar updates
+      within seconds of a change instead of within five minutes. **Genuinely optional** — with
+      it unset no push channel is created and the calendar falls back to syncing lazily on
+      read, which bounds staleness at five minutes because the kiosk polls all day. It also
+      can't work in local development, since Google can't reach localhost.
+
+      ⚠️ Phase 6 asks for **read-only** scope (`calendar.readonly`). Phase 7 widens it to
+      read-write, and Google will require re-consent at that point — that's expected, not a
+      bug. I'd rather not ask for write access before anything writes.
+
 ---
 
 ## 5. Before Phase 9 — the cron tick
@@ -316,5 +333,6 @@ comment or a file whenever convenient and I'll seed it.
 | `GOOGLE_CLIENT_ID` | Phase 6 | |
 | `GOOGLE_CLIENT_SECRET` | Phase 6 | |
 | `GOOGLE_REDIRECT_URI` | Phase 6 | Must match the console exactly |
-| `TOKEN_ENCRYPTION_KEY` | Phase 6 | 32 random bytes, base64. Encrypts the stored refresh token. |
+| `TOKEN_ENCRYPTION_KEY` | Phase 6 | 32 random bytes, base64. AES-256-GCM on the stored refresh token. |
+| `GOOGLE_WEBHOOK_URL` | Phase 6 (optional) | Enables push updates. Unset = lazy sync on read, 5-minute staleness. |
 | `CRON_SHARED_SECRET` | Phase 9 | Same value in GitHub secrets and SWA settings |

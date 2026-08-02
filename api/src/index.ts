@@ -23,4 +23,5 @@ import './functions/tasks.js';
 import './functions/points.js';
 import './functions/pulse.js';
 import './functions/claude.js';
+import './functions/google.js';
 import './functions/cron.js';
