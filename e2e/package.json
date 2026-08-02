@@ -1,0 +1,20 @@
+{
+  "name": "family-dashboard-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The single end-to-end smoke test, run against `swa start`",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@azure/static-web-apps-cli": "^2.0.10",
+    "@playwright/test": "^1.58.0",
+    "azure-functions-core-tools": "^4.12.1",
+    "typescript": "^7.0.2"
+  }
+}

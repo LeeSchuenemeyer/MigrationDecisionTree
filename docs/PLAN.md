@@ -553,6 +553,44 @@ is gone" path and the new exported "the family deleted this" path had the same
 name, which `tsc` reports but only after both exist. The private one is now
 `applyRemoteDeletion`, which is also the more honest name for what it does.
 
+**Phase 8 as built.** Four notes:
+
+- **The error boundary was necessary and not sufficient.** A React boundary
+  catches render-phase errors and nothing else — not a chunk that fails to load
+  after a deploy, not a throw during module evaluation before React mounts, not
+  an unhandled rejection. Those are precisely the failures that leave a wall
+  tablet on a white screen. `lib/lastResort.ts` adds window-level `error` and
+  `unhandledrejection` listeners, installed *before* render because the case it
+  exists for is the one where render never happens. Two rules keep it from
+  becoming the problem: it only fires when the app never mounted or the module
+  graph is broken, and it never reloads twice inside ten minutes — a fault that
+  survives the reload would otherwise reload all night.
+
+- **The wake lock re-acquire is load-bearing, not defensive.** The sentinel is
+  released by the browser on every visibility change and is not restored
+  automatically, so without a `visibilitychange` handler the lock survives
+  exactly until the first interruption and then never again. That failure is
+  invisible for days.
+
+- **The contrast audit found real failures, not near-misses.** `ink-faint`
+  measured **2.70:1** in the light theme and 3.16:1 in the dark one, while being
+  used almost exclusively at `text-xs` — the smallest text in the app. The light
+  theme's accent and status colours were large-text-only while carrying point
+  values in mono. Five tokens moved; all now clear 4.5:1 against both `ground`
+  and `panel`, computed rather than eyeballed. The prototype and `/compat.html`
+  were updated in the same commit so the "tokens map 1:1" claim stays true.
+
+- **Reduced motion drops the animation, not the announcement.** The celebration
+  panel still appears, still holds, still carries `role="alert"`. What goes away
+  is the movement. A kitchen display is unavoidable in a way a web page is not,
+  so this is the one place where the accessible path has to be equal rather than
+  merely available.
+
+The end-to-end test runs against a real `swa start` — Azurite, the Functions
+host, SWA routing, real cookies — and passes repeatedly against a dirty
+household rather than requiring a pristine seed, which is what makes it worth
+having in CI at all.
+
 
 ## 9. Verification
 
@@ -613,7 +651,11 @@ still rendering.
   expiry, ETag-conflict retry on `pointsBalance`.
 - **Tier 3 — exactly one Playwright test** against `swa start`: PIN login → complete task →
   parent approve → assert leaderboard and ticker. One end-to-end test catches integration
-  breakage; ten become maintenance you resent.
+  breakage; ten become maintenance you resent. Lives in `e2e/`, which owns the SWA CLI and
+  Functions core tools so `verify` stays fast; run it with `npm test --prefix e2e` against a
+  live `swa start`. It reads the ranked total from a `data-points` attribute rather than the
+  rendered text, because the bug it guards against — pending points folded into the ranked
+  total — is exactly the one that text-matching would paper over.
 - **Tier 4 — `ci.yml` on every branch push** (not just `main`): `tsc --noEmit`, ESLint,
   Vitest 1+2, build both packages. This is the *only* feedback loop available on
   `claude/family-dashboard-gamification-ycon4f`, given the SWA workflow's `main`-only trigger.

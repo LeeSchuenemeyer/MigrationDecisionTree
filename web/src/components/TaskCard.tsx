@@ -49,7 +49,13 @@ export function TaskCard({
       type="button"
       disabled={!canComplete || pending || done}
       onClick={onComplete}
+      // Without this the accessible name is the icon, the title and the status
+      // line run together — "Sparkles Wipe the counters by 8:00am" with no
+      // pause. Naming it explicitly also gives the end-to-end test something
+      // stable to click.
+      aria-label={`${task.title} — ${sub}`}
       data-status={state}
+      data-title={task.title}
       className={[
         'border-line bg-panel grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border border-l-[3px] px-3 text-left transition-colors',
         'min-h-touch kiosk:min-h-touch-kiosk kiosk:gap-5 kiosk:px-5',
@@ -80,7 +86,9 @@ export function TaskCard({
             done ? 'text-ink-dim line-through' : '',
           ].join(' ')}
         >
-          {task.icon ? `${task.icon} ` : ''}
+          {/* Interpolated bare, an emoji is read aloud by name — "Sparkles
+              Wipe the counters". It is decoration; the title carries it. */}
+          {task.icon && <span aria-hidden="true">{task.icon} </span>}
           {task.title}
         </span>
         <span

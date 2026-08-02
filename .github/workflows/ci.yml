@@ -106,6 +106,105 @@ jobs:
       - name: Build api
         run: npm run build --prefix api
 
+  # Exactly one end-to-end test, in its own job because it needs the whole stack
+  # standing up — Azurite, the Functions host, and the SWA emulator — which is
+  # several minutes the fast `verify` feedback loop should not have to wait for.
+  #
+  # It runs against :4280, never Vite on :5173. Only the SWA CLI applies
+  # staticwebapp.config.json routing, proxies /api, and preserves the
+  # same-origin cookie behaviour the session design depends on, so a test
+  # against the dev server would pass while production was broken.
+  e2e:
+    runs-on: ubuntu-latest
+    name: end-to-end smoke
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Install
+        run: |
+          npm ci --prefix web
+          npm ci --prefix api
+          npm ci --prefix e2e
+
+      - name: Install Chromium
+        run: npx --prefix e2e playwright install --with-deps chromium
+
+      - name: Start Azurite
+        run: |
+          npx --prefix api azurite \
+            --silent --location /tmp/azurite-e2e --skipApiVersionCheck &
+          for i in $(seq 1 30); do
+            if nc -z 127.0.0.1 10002; then echo "azurite up"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::Azurite did not start within 30s"; exit 1
+
+      - name: Build
+        run: |
+          npm run build --prefix web
+          npm run build --prefix api
+
+      # `local` rather than the production household id: the seed script refuses
+      # anything else, which is the guard that stops this job from ever pointing
+      # at real family data.
+      - name: Seed
+        run: npm run seed --prefix api
+        env:
+          TABLES_CONNECTION_STRING: UseDevelopmentStorage=true
+          HOUSEHOLD_ID: local
+          HOUSEHOLD_TZ: America/Denver
+
+      - name: Write local.settings.json
+        run: |
+          cat > api/local.settings.json <<'JSON'
+          {
+            "IsEncrypted": false,
+            "Values": {
+              "FUNCTIONS_WORKER_RUNTIME": "node",
+              "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+              "TABLES_CONNECTION_STRING": "UseDevelopmentStorage=true",
+              "HOUSEHOLD_ID": "local",
+              "HOUSEHOLD_TZ": "America/Denver",
+              "CRON_SHARED_SECRET": "ci-only-not-a-secret"
+            }
+          }
+          JSON
+
+      # `func` must be on PATH: the SWA CLI shells out to the Functions host
+      # rather than importing it, so a core-tools binary that exists only in
+      # e2e/node_modules/.bin is invisible to it.
+      - name: Start the SWA emulator
+        run: |
+          export PATH="$PWD/e2e/node_modules/.bin:$PATH"
+          npx --prefix e2e swa start web/dist \
+            --api-location api --swa-config-location web/public \
+            > /tmp/swa.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:4280/api/health >/dev/null; then
+              echo "swa up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::SWA emulator did not become healthy within 180s"
+          tail -50 /tmp/swa.log
+          exit 1
+
+      - name: Smoke test
+        run: npm test --prefix e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-trace
+          path: e2e/test-results/
+          retention-days: 7
+
   # Mirrors the deploy job exactly: installs ONLY api/, with a bare repo root.
   #
   # The `verify` job above installs root dev-tooling dependencies, which can

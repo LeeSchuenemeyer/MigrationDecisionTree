@@ -140,7 +140,10 @@ function MemberGroup({
   onComplete: (t: TaskInstance) => void;
 }): ReactNode {
   return (
-    <div className="flex flex-col gap-1.5">
+    // `group`, not `region`: five landmarks on one screen is landmark spam,
+    // but the chores still need to be attributable to a person when the visual
+    // grouping is not available.
+    <div role="group" aria-label={`${member.displayName}'s chores`} className="flex flex-col gap-1.5">
       <div className="font-display text-ink-faint flex items-center gap-2 pt-1 text-xs tracking-[0.12em] uppercase kiosk:text-base">
         <span aria-hidden="true">{member.avatarEmoji}</span>
         {member.displayName}

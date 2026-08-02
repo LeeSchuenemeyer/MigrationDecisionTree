@@ -287,7 +287,17 @@ function EventForm({
   }
 
   return (
-    <div className="bg-ground/80 fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={event ? 'Edit event' : 'New event'}
+      className="bg-ground/80 fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6"
+      onClick={(e) => {
+        // Backdrop dismiss, matching the PIN keypad. Guarded on the target so a
+        // drag that ends outside the panel does not discard a half-typed event.
+        if (e.target === e.currentTarget && !busy) onClose();
+      }}
+    >
       <div className="border-line bg-panel flex max-h-full w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-t-xl border p-4 sm:rounded-xl kiosk:max-w-2xl kiosk:gap-5 kiosk:p-8">
         <h3 className="font-display text-ink-dim text-sm tracking-[0.16em] uppercase kiosk:text-lg">
           {event ? 'Edit event' : 'New event'}

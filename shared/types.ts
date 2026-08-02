@@ -177,6 +177,15 @@ export interface FeedItem {
 export interface TickerItem {
   id: string;
   source: 'activity' | 'upcoming' | 'overdue' | 'event';
+  /**
+   * The originating feed kind, or null for the synthesised deadline and
+   * calendar lines that have no feed row behind them.
+   *
+   * Carried purely so the client can tell an achievement from a finished chore
+   * without a second request — the wall tablet celebrates one and not the
+   * other, and it has no session to ask "whose badge is this?" with.
+   */
+  kind: FeedKind | null;
   /** What is actually displayed. Claude's line when present, the fact otherwise. */
   text: string;
   detail: string | null;

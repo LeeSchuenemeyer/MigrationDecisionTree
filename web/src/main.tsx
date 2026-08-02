@@ -12,6 +12,7 @@ import { Rewards } from './routes/Rewards';
 import { Calendar } from './routes/Calendar';
 import { Placeholder } from './routes/Placeholder';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { installLastResortReload } from './lib/lastResort';
 
 /**
  * Data policy: nothing polls on its own. A single /api/pulse endpoint reports a
@@ -48,6 +49,10 @@ const router = createBrowserRouter([
 ]);
 
 const isKiosk = document.documentElement.dataset['surface'] === 'kiosk';
+
+// Installed before render, deliberately: the failure it exists for is the one
+// where the line below never runs.
+installLastResortReload(isKiosk);
 
 const rootEl = document.getElementById('root');
 if (!rootEl) throw new Error('#root not found');

@@ -85,6 +85,12 @@ function StandingRow({
       <button
         type="button"
         onClick={onSelect}
+        // The ranked total, exposed for the end-to-end test. Reading it out of
+        // the rendered text would mean matching against a row that also carries
+        // a streak length and a pending badge — and "pending must never be
+        // folded into the ranked total" is exactly what that test asserts.
+        data-member={row.member.id}
+        data-points={row.points}
         className={[
           'border-line bg-panel grid w-full grid-cols-[auto_auto_1fr_auto] items-center gap-3 rounded-md border px-3 text-left transition-colors',
           'min-h-touch kiosk:min-h-touch-kiosk kiosk:gap-5 kiosk:px-5',

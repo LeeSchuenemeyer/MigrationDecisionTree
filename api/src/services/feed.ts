@@ -123,6 +123,7 @@ export async function tickerItems(): Promise<TickerItem[]> {
   const activity: TickerItem[] = collapseByRef(feed).map((f) => ({
     id: `feed:${f.id}`,
     source: 'activity',
+    kind: f.kind,
     // Claude's line when there is one, the plain fact when there is not. The
     // ticker is complete either way, which is what makes the API optional.
     text: f.commentary ?? f.headline,
@@ -145,6 +146,7 @@ function fromEvents(events: CalendarEvent[]): TickerItem[] {
   return events.map((event) => ({
     id: `event:${event.id}`,
     source: 'event' as const,
+    kind: null,
     text: event.allDay
       ? `${event.title} — all day`
       : `${event.title} at ${formatLocalTime(Date.parse(event.startUtc), env.timezone)}`,
@@ -176,6 +178,7 @@ function upcomingFromTasks(tasks: TaskInstance[], today: LocalDate): TickerItem[
     .map(({ task, dueMs }) => ({
       id: `due:${task.id}`,
       source: dueMs < now ? ('overdue' as const) : ('upcoming' as const),
+      kind: null,
       text:
         dueMs < now
           ? `${task.title} was due at ${formatLocalTime(dueMs, env.timezone)}`
