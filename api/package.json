@@ -24,6 +24,7 @@
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@azure/data-tables": "^13.3.2",
+    "@azure/storage-blob": "~12.32.0",
     "@types/luxon": "^3.7.3",
     "@types/node": "^26.1.2",
     "azurite": "^3.36.0",

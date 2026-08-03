@@ -283,12 +283,28 @@ It's the single biggest quality-of-life difference between "a browser tab on a w
 
 - [ ] **Add the same value to the SWA** as `CRON_SHARED_SECRET`.
 
+- [ ] **Add a second GitHub repo secret named `TICK_URL`**, set to
+      `https://<your-swa>.azurestaticapps.net/api/cron/tick`. The workflow checks for both
+      and exits quietly if either is missing, so it will sit there doing nothing — and
+      reporting green — until you add them. That's on purpose: a red X every hour on a
+      workflow you haven't configured yet is noise.
+
+      Once it's running, **Settings → Scheduled jobs** in the app shows when each job last
+      ran. That's the place to look if something feels stale.
+
 - [ ] **Know the caveat:** GitHub Actions cron is best-effort — it runs 5–20 minutes late
       under load, and **GitHub disables scheduled workflows after 60 days of repo
       inactivity**. Nothing correctness-critical depends on it (materialization and calendar
       sync both run lazily on read), but it will drift. The clean escape hatch, if it becomes
       annoying, is SWA Standard (~$9/mo) plus a linked Function App, which gives real timer
       triggers.
+
+- [ ] **Nothing to do for backups, but know they exist.** Once the tick runs, a nightly
+      gzipped JSON snapshot of every table lands in a `backups` container in the same storage
+      account, kept 60 days, listed in Settings. Sessions and PIN attempt counters are
+      deliberately excluded — restoring those would resurrect logins that were meant to have
+      expired. **Restore is manual on purpose:** a one-tap restore button is a one-tap way to
+      destroy the live household, for an event that happens approximately never.
 
 ---
 

@@ -25,3 +25,4 @@ import './functions/pulse.js';
 import './functions/claude.js';
 import './functions/google.js';
 import './functions/cron.js';
+import './functions/ops.js';

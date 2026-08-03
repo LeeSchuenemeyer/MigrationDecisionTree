@@ -10,6 +10,7 @@ import { Queue } from './routes/Queue';
 import { Points } from './routes/Points';
 import { Rewards } from './routes/Rewards';
 import { Calendar } from './routes/Calendar';
+import { Settings } from './routes/Settings';
 import { Placeholder } from './routes/Placeholder';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { installLastResortReload } from './lib/lastResort';
@@ -41,7 +42,7 @@ const router = createBrowserRouter([
       { path: 'queue', element: <Queue /> },
       { path: 'rewards', element: <Rewards /> },
       { path: 'me', element: <Placeholder title="Me" phase="Phase 1" /> },
-      { path: 'settings', element: <Placeholder title="Settings" phase="Phase 1" /> },
+      { path: 'settings', element: <Settings /> },
       { path: 'kiosk/enroll', element: <Placeholder title="Enroll this tablet" phase="Phase 1" /> },
       { path: '*', element: <Placeholder title="Not found" phase="404" /> },
     ],

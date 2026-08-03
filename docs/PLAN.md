@@ -591,6 +591,38 @@ host, SWA routing, real cookies — and passes repeatedly against a dirty
 household rather than requiring a pristine seed, which is what makes it worth
 having in CI at all.
 
+**Phase 9 as built.** Four notes:
+
+- **The daily guard claims the day BEFORE running the job, not after.** Actions
+  cron runs late enough under load that a delayed tick overlaps the next hour's,
+  and both read "not run today". Claiming afterwards lets both proceed, which
+  for the reconciler is merely wasteful and for anything that writes a feed item
+  or spends money is not. The cost of that ordering is that a job which crashes
+  has burned its day — the right trade, because every one of these is a repair
+  job and a repair skipped for a day is invisible.
+
+- **The "run the tick twice" test was written vacuous and had to be fixed.**
+  The first version ran the tick against a household with no task definitions,
+  compared three zeroes to three zeroes, and passed. It now materialises a real
+  chore, drives it through completion and approval so there is a ledger entry
+  and feed items to duplicate, and asserts each count is non-zero *before*
+  asserting it is unchanged. A test that cannot fail is worse than no test,
+  because it is also a claim.
+
+- **`@azure/storage-blob@12.33` declares `node >= 22`** against a runtime pinned
+  to `node:20` — the same trap as `google-auth-library` in Phase 6. Here the
+  dependency is genuinely wanted, so it is pinned `~12.32.0` (the last release
+  declaring `>= 20`) rather than `^`, which would float straight back into the
+  mismatch on the next install.
+
+- **Restore is deliberately not built.** An automated restore endpoint is a
+  one-tap way to destroy the live household, serving an event that happens
+  approximately never. The snapshot is gzipped JSON in the same storage account;
+  recovering from it is meant to be tedious and deliberate.
+
+Sessions and PIN-attempt rows are excluded from the snapshot: restoring them
+would resurrect logins that were meant to have expired.
+
 
 ## 9. Verification
 

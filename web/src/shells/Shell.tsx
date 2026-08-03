@@ -25,6 +25,15 @@ const NAV = [
   { to: '/me', label: 'Me', end: false },
 ] as const;
 
+/**
+ * Desktop only, deliberately.
+ *
+ * Parent-admin work is uncomfortable on a phone and actively wrong on a wall
+ * tablet, and a seventh tab in a bottom bar makes the six that matter smaller
+ * for everyone. It stays reachable everywhere by URL.
+ */
+const DESKTOP_NAV = [{ to: '/settings', label: 'Settings', end: false }] as const;
+
 export function Shell(): ReactNode {
   const surface = useSurface();
   const isKiosk = surface === 'kiosk';
@@ -116,7 +125,7 @@ function DesktopShell(): ReactNode {
         <div className="font-display text-brand mb-4 text-sm tracking-[0.18em] uppercase">
           Family HQ
         </div>
-        {NAV.map((n) => (
+        {[...NAV, ...DESKTOP_NAV].map((n) => (
           <NavLink
             key={n.to}
             to={n.to}

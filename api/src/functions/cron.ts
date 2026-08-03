@@ -11,6 +11,9 @@ import { expireOverdue, materialize } from '../services/materializer.js';
 import { listTasksForDate, today } from '../services/tasks.js';
 import { ensureWatchChannel } from './google.js';
 import { sync as googleSync } from '../services/googleSync.js';
+import { evaluateStreak } from '../services/points.js';
+import { backup } from '../services/backup.js';
+import { reconcile, runOncePerLocalDay, settleYesterdayStreaks, sweepSessions } from '../services/ops.js';
 
 /**
  * POST /api/cron/tick — the timer trigger SWA does not have.
@@ -73,6 +76,28 @@ export async function postTick(req: HttpRequest): Promise<HttpResponseInit> {
   // the only thing that notices.
   results['googleChannel'] = await attempt(() => ensureWatchChannel());
   results['googleSync'] = await attempt(() => googleSync({ force: true }));
+
+  // ---------------------------------------------------------------------
+  // Daily housekeeping.
+  //
+  // Guarded to once per household-local day rather than run every hour: none
+  // of it changes anything on a normal day, and a reconciler scanning 24
+  // months of ledger partitions hourly is real money for no information.
+  //
+  // The guard is also what makes a doubled tick harmless — Actions cron runs
+  // late enough under load that two firings can overlap, and "ran twice"
+  // must never mean "paid twice" or "two feed items".
+  // ---------------------------------------------------------------------
+
+  results['streaksSettled'] = await attempt(() =>
+    runOncePerLocalDay('streaks', () => settleYesterdayStreaks(evaluateStreak)),
+  );
+
+  results['reconcile'] = await attempt(() => runOncePerLocalDay('reconcile', reconcile));
+
+  results['sessionSweep'] = await attempt(() => runOncePerLocalDay('sessions', sweepSessions));
+
+  results['backup'] = await attempt(() => runOncePerLocalDay('backup', backup));
 
   return json({ ok: true, results });
 }

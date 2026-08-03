@@ -243,3 +243,28 @@ jobs:
 
       - name: Build api
         run: npm run build --prefix api
+
+      # Building is not the same as loading. A dependency that does
+      # `createRequire(import.meta.url)` bundles cleanly into CJS and then
+      # throws on require, because esbuild substitutes an empty object for
+      # `import.meta` — which is how adding @azure/storage-blob took down every
+      # route at once while the build stayed green.
+      #
+      # The deploy SUCCEEDS in that state. The host starts, registers nothing,
+      # and every route 404s with "No job functions found" in a log nobody
+      # reads. So: actually require the bundle, and assert functions registered.
+      - name: Assert the api bundle loads and registers its functions
+        run: |
+          npm ci --omit=dev --prefix api   # exactly what the deploy ships
+          node -e "require('./api/dist/index.js')" 2> /tmp/register.log || {
+            echo "::error::api bundle threw on require — the deploy would register zero functions"
+            tail -30 /tmp/register.log
+            exit 1
+          }
+          count=$(grep -c 'Skipping call to register function' /tmp/register.log || true)
+          echo "functions registered: $count"
+          if [ "${count:-0}" -lt 20 ]; then
+            echo "::error::Only $count functions registered; expected the full app."
+            tail -30 /tmp/register.log
+            exit 1
+          fi
