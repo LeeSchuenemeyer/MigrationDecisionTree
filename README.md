@@ -20,6 +20,10 @@ shared/     Pure TypeScript shared by both sides — keys, time, recurrence, poi
             each compile it into their own bundle.
 web/        React + Vite + TypeScript SPA. Self-contained package.
 api/        Azure Functions (node:20), bundled to a single file by esbuild.
+e2e/        One Playwright smoke test, run against a live `swa start`. Owns the SWA CLI
+            and Functions core tools so the fast CI job does not have to install them.
+docs/       PLAN.md (the design, with an "as built" note per phase) and SETUP-TODO.md
+            (everything that needs a human — credentials, cloud config, hardware).
 prototype/  Standalone clickable mock of the kiosk. No build step, no backend.
 ```
 
@@ -54,16 +58,24 @@ appear only at :5173 are usually the missing proxy.
 ### Tests
 
 ```bash
-npm test                        # unit tests over shared/
+npm test                        # unit tests over shared/ — pure functions, no infrastructure
+npm test --prefix api           # integration tests against Azurite (start it first)
+npm test --prefix e2e           # the one end-to-end test; needs `swa start` already running
+
 npm run typecheck               # shared/
 npm run typecheck --prefix web
 npm run typecheck --prefix api
+npm run typecheck --prefix e2e
 ```
+
+Nearly all the test value is in `shared/`: recurrence across DST and month boundaries,
+streak state transitions, key round-trips, and the PG-13 filter are all pure functions
+encoding rules that are easy to get subtly wrong and painful to debug on a kitchen wall.
 
 ⚠️ Azurite's table implementation is not byte-identical to Azure — ETag semantics and
 conditional-create behavior are the known divergences. Because idempotent task
 materialization depends on `createEntity` throwing 409, exercise that path against a real
-storage account (about $0.05/month) at least once per phase, not just against Azurite.
+storage account (about $0.05/month) before relying on it, not just against Azurite.
 
 ## Configuration
 
@@ -78,7 +90,17 @@ locally. Never commit the latter — it is gitignored.
 | `ANTHROPIC_API_KEY` | Server-side only — never shipped to the browser |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Calendar sync |
 | `TOKEN_ENCRYPTION_KEY` | 32 random bytes, base64. Encrypts the stored Google refresh token. |
-| `CRON_SHARED_SECRET` | Authenticates `POST /api/cron/tick` |
+| `GOOGLE_WEBHOOK_URL` | Optional. Set it for push updates; unset, the calendar syncs lazily on read and staleness is bounded at five minutes. |
+| `CRON_SHARED_SECRET` | Authenticates `POST /api/cron/tick`. Needed in **both** SWA settings and GitHub repo secrets. |
+| `TICK_URL` | GitHub repo secret only. The cron workflow no-ops without it. |
+
+Everything degrades: with no Anthropic key the ticker uses hand-written copy and badges get
+deterministic names; with no Google connection the calendar screen offers a Connect button
+and nothing else changes; with no cron secrets, chores and the calendar still update
+whenever somebody opens the app.
+
+**[docs/SETUP-TODO.md](docs/SETUP-TODO.md) is the checklist for all of it** — it is written
+for the person holding the Azure and Google accounts, not for a developer.
 
 ## Two constraints worth knowing before you change anything
 

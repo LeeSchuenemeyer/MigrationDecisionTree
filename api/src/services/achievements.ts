@@ -3,6 +3,7 @@ import {
   achievementAwardPK,
   achievementAwardRK,
   achievementDefPK,
+  achievementDefRK,
   ledgerPK,
   ledgerRK,
   memberPK,
@@ -18,6 +19,7 @@ import {
   type Criteria,
   type MemberStats,
 } from '../../../shared/achievements.js';
+import { DEFAULT_ACHIEVEMENTS } from '../../../shared/achievementCatalog.js';
 import { fallbackAchievement, type Tier } from '../../../shared/fallbackCopy.js';
 import { checkPG13, isSingleEmoji } from '../../../shared/pg13.js';
 import { yearMonthNow } from '../../../shared/time.js';
@@ -35,7 +37,7 @@ import { env } from '../lib/env.js';
 import { writeFeedItem } from '../lib/feed.js';
 import { getMemberRow, listMembers } from '../lib/members.js';
 import { bumpRev } from '../lib/rev.js';
-import { getEntity, listPartition, updateWithRetry, upsert } from '../lib/tables.js';
+import { createIfAbsent, getEntity, listPartition, updateWithRetry, upsert } from '../lib/tables.js';
 
 /**
  * Achievement evaluation and naming.
@@ -109,11 +111,55 @@ type DefRow = AchievementDefEntity & { partitionKey: string; rowKey: string };
 // Reads
 // ---------------------------------------------------------------------------
 
+/**
+ * Put the default badge ladder in place, once.
+ *
+ * Deterministic row keys plus `createIfAbsent`, so this is safe to call on
+ * every read — the same idempotency guarantee the materializer leans on. It
+ * deliberately does NOT update existing rows: a parent who renamed a badge or
+ * deactivated one must not have that undone on the next request.
+ *
+ * This exists because without it the whole feature is inert. Everything else
+ * was built — the evaluator, the namer, the tiers, the trophy case, the
+ * celebration — but nothing ever wrote a definition, so no badge could be
+ * earned by anyone, ever.
+ */
+export async function ensureDefaultDefs(): Promise<number> {
+  let created = 0;
+  for (const seed of DEFAULT_ACHIEVEMENTS) {
+    const ok = await createIfAbsent<AchievementDefEntity>(TABLES.achievementDefs, {
+      partitionKey: achievementDefPK(env.householdId),
+      rowKey: achievementDefRK(seed.id),
+      name: seed.name,
+      description: seed.description,
+      criteriaJson: JSON.stringify(seed.criteria),
+      tier: seed.tier,
+      icon: seed.icon,
+      pointsReward: seed.pointsReward,
+      active: true,
+      createdAt: new Date().toISOString(),
+    });
+    if (ok) created++;
+  }
+  return created;
+}
+
 export async function listDefs(): Promise<Array<{ id: string; criteria: Criteria; row: DefRow }>> {
-  const rows = (await listPartition<AchievementDefEntity>(
+  let rows = (await listPartition<AchievementDefEntity>(
     TABLES.achievementDefs,
     achievementDefPK(env.householdId),
   )) as DefRow[];
+
+  // Empty means a household that has never had the ladder installed. Install
+  // it and re-read rather than returning nothing — otherwise the first family
+  // to use the app gets no badges until some other code path happens to run.
+  if (rows.length === 0) {
+    await ensureDefaultDefs();
+    rows = (await listPartition<AchievementDefEntity>(
+      TABLES.achievementDefs,
+      achievementDefPK(env.householdId),
+    )) as DefRow[];
+  }
 
   const out: Array<{ id: string; criteria: Criteria; row: DefRow }> = [];
   for (const row of rows) {

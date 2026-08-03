@@ -666,6 +666,37 @@ tick twice → no duplicate instances, ledger entries, or feed items**; restart 
 mid-session → recovers on next poll, no white screen; idle kiosk 15 min → session dropped,
 still rendering.
 
+**Smoke checklist — as actually run.** Walked against a live `swa start` (Azurite +
+Functions host + SWA routing + real cookies) after Phase 9. 26 of 26 automatable
+checks passed. What that covered, and what it did not:
+
+*Verified against the running stack:* cold load with no session; wrong PIN ×5 → HTTP 429
+lockout **and** the security feed item, with another member still able to sign in;
+complete → `pending` shown separately and **not** folded into the ranked total; parent
+approve → points land, ticker line written, pulse revision moves (so the kiosk refreshes
+without a reload); redemption through the *same* parent queue as chores; cron tick twice →
+identical instance and feed counts; cron rejects a missing **and** a wrong secret; a child
+cannot read the ops screen or adjust their own points; reconciler reports zero drift after
+a real approve-and-redeem cycle; killing Azurite mid-session → the static page keeps
+serving and the API recovers on the next poll with no restart and no white screen; the
+whole no-Anthropic-key path, which is the app's resting state locally — the challenge and
+ticker both render from hand-written copy, and badges are awarded with deterministic names.
+
+*Not verifiable here, and stated rather than glossed:*
+
+- **Every Google Calendar item.** Create/edit/delete round-tripping, the echo layers under
+  a real webhook, and the month-move all need a real Google account and a public HTTPS
+  callback. They are covered by 20 tests against a faked Google surface, which is a
+  materially weaker claim than having watched an event appear on a phone. **This is the
+  largest untested-in-anger surface in the project.**
+- **Claude generation with a real key.** Only the fallback path has run. The prompts, the
+  structured-output schema, and the PG-13 post-filter are unit-tested, but no real
+  completion has ever been through them.
+- **Streak multipliers accruing over consecutive real days**, and the higher badge tiers.
+  Both are unit-tested at the n-1/n/n+1 boundary; neither has been watched over a week.
+- **A 15-minute idle kiosk dropping its session.** The expiry logic is tested; the wait
+  is not something to sit through.
+
 **Automated tests, right-sized:**
 - **Tier 1 — Vitest on `shared/`, where nearly all the value is.** Every module is a pure
   function encoding rules that are easy to get subtly wrong and painful to debug in

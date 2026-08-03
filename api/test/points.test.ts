@@ -254,7 +254,13 @@ describe('streak multipliers on an award', () => {
 
     // Approval pays exactly the number the kid was shown as pending.
     expect(result.delta).toBe(25);
-    expect(await balanceOf('kid')).toBe(before + 25);
+
+    // The balance also absorbs any badge unlocked by this same approval, which
+    // carries its own pointsAwarded. Accounting for it explicitly rather than
+    // asserting `before + 25`: that form passed only while the achievement
+    // ladder was empty and no badge could ever fire.
+    const bonus = (result.achievements ?? []).reduce((n, a) => n + a.pointsAwarded, 0);
+    expect(await balanceOf('kid')).toBe(before + 25 + bonus);
 
     // Pending must unwind by exactly what was added — not by a freshly
     // recomputed award, which is the drift this snapshot exists to prevent.

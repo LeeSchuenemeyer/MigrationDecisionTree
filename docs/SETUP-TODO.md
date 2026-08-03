@@ -1,14 +1,22 @@
 # Setup checklist — things only you can do
 
-Ordered by what they unblock. Items in **§1 are blocking right now**; everything else
-lines up with a specific phase, so you can do it just before that phase lands.
+**All nine phases are built.** Everything below is credentials, cloud config, physical
+hardware, and the handful of decisions that are yours rather than mine. None of it is code
+I can write.
 
-Nothing here is code — it's credentials, cloud config, physical hardware, and the handful
-of decisions that are yours rather than mine.
+Ordered by what it unblocks. **§1 is blocking** — until it's done the app deploys and
+renders but cannot store anything. Everything after that turns on a specific feature, and
+the app degrades gracefully without each one:
+
+| Skip this | And you lose |
+|---|---|
+| §3 Anthropic key | Witty commentary. The ticker still works, using hand-written copy. |
+| §4 Google Calendar | The calendar screen. Everything else is unaffected. |
+| §5 Cron secrets | Batched commentary, the daily challenge, nightly backups. Chores and the calendar still update whenever someone opens the app. |
 
 ---
 
-## 1. Blocking now — PR #1 deploys but the app can't store anything
+## 1. Blocking — the app can't store anything yet
 
 Right now `/api/health` reports `storage: "unconfigured"`. The app builds and deploys; it
 just has nowhere to put data.
@@ -67,13 +75,12 @@ just has nowhere to put data.
 
 ## 2. Decisions I need from you
 
-- [ ] **Merge PR #1 now, or keep stacking?** It currently holds Phases 0–2 (scaffold, PIN
-      identity, chores + approvals). It's green and self-consistent. My default is to keep
-      stacking all 9 phases onto it unless you'd rather review in smaller pieces — say the
-      word and I'll open a fresh PR per phase from here.
+- [x] ~~**Merge PR #1, or keep stacking?**~~ **Done — PR #1 merged, and Phases 3–9 stacked
+      onto PR #2.** If you'd rather review the remaining work in smaller pieces in future,
+      say so and I'll open a PR per change.
 
 - [x] ~~**Which tablet?**~~ **Decided: Android tablets and phones, plus an LG StanbyME 2.**
-      See §2a below — the StanbyME needs one check from you before I can finish Phase 8.
+      See §2a — one check from you there is the last open device question.
 
 - [x] ~~**Node 20 vs 22.**~~ **Resolved by not taking the dependency.** The plan called for
       `google-auth-library`, which declares `node >=22` against our pinned `node:20`. Building
@@ -92,8 +99,8 @@ just has nowhere to put data.
 ## 2a. Devices
 
 **Android tablets and phones** — no problem at all. Chrome on Android is current, so
-everything works, including the Phase 8 kiosk hardening. For whichever Android tablet
-ends up wall-mounted, use **[Fully Kiosk Browser](https://www.fully-kiosk.com/)**: real
+everything works, including the wake lock, night dimming and burn-in drift. For whichever
+Android tablet ends up wall-mounted, use **[Fully Kiosk Browser](https://www.fully-kiosk.com/)**: real
 kiosk mode, screen-on control, auto-restart on crash, scheduled sleep/wake, remote admin.
 It's the single biggest quality-of-life difference between "a browser tab on a wall" and
 "an appliance." Point it at `https://<your-swa>/?kiosk=1`.
@@ -146,7 +153,10 @@ It's the single biggest quality-of-life difference between "a browser tab on a w
 
 ---
 
-## 3. Before Phase 5 — Claude integration
+## 3. To turn on Claude commentary
+
+Built and working. Without a key the app runs on ~50 hand-written PG-13 lines and a
+deterministic badge namer — nothing errors, nothing is missing, it's just less witty.
 
 - [ ] **Create an Anthropic API key** at [console.anthropic.com](https://console.anthropic.com)
       → API Keys.
@@ -207,7 +217,10 @@ It's the single biggest quality-of-life difference between "a browser tab on a w
 
 ---
 
-## 4. Before Phase 6 — Google Calendar
+## 4. To turn on the calendar
+
+Built, two-way. Without it the Calendar screen offers a Connect button and everything
+else is unaffected.
 
 - [ ] **Decide which Google account owns the household calendar.** One account connects, once.
       This is *not* per-person login — PINs handle identity; this is a single stored refresh
@@ -258,12 +271,13 @@ It's the single biggest quality-of-life difference between "a browser tab on a w
       read, which bounds staleness at five minutes because the kiosk polls all day. It also
       can't work in local development, since Google can't reach localhost.
 
-- [ ] **Reconnect Google once, after Phase 7 ships.** Phase 6 asked for **read-only** scope
-      (`calendar.readonly`); Phase 7 widens it to `calendar.events` so the dashboard can
-      actually write. Google will not silently upgrade an existing grant, so an already
-      connected household stays read-only until a parent goes to the calendar screen and
-      reconnects. **This is expected, not a bug** — I'd rather not ask a family for write
-      access to their calendar before anything writes.
+- [ ] **Only relevant if you connected Google before 2 Aug: reconnect it once.** The
+      calendar was originally built read-only (`calendar.readonly`) and later widened to
+      `calendar.events` so the dashboard can write. Google will not silently upgrade an
+      existing grant, so a household connected under the old scope stays read-only until a
+      parent goes to the calendar screen and reconnects. **This is expected, not a bug.**
+      Connecting for the first time now asks for the right scope immediately and there is
+      nothing to do.
 
       What a read-only household sees in the meantime: the calendar renders exactly as
       before, the "+ Add" button is hidden, tapping an event does nothing, and a parent
@@ -272,7 +286,7 @@ It's the single biggest quality-of-life difference between "a browser tab on a w
 
 ---
 
-## 5. Before Phase 9 — the cron tick
+## 5. To turn on the scheduled jobs
 
 - [ ] **Generate a shared secret and add it as a GitHub repo secret** named
       `CRON_SHARED_SECRET` (Settings → Secrets and variables → Actions):
@@ -335,11 +349,13 @@ comment or a file whenever convenient and I'll seed it.
 
 ## 7. Optional, but worth it
 
-- [ ] **A real Azure storage account for testing** (can be the same one, different
-      `HOUSEHOLD_ID`). Azurite's table implementation diverges from real Azure on exactly the
-      semantics this design leans on — ETag behaviour and conditional create. I'd like to
-      exercise the idempotent-materialization path against real Azure once per phase rather
-      than trusting the emulator.
+- [ ] **Exercise it against real Azure once before you rely on it** (can be the same
+      storage account, a different `HOUSEHOLD_ID`). Everything so far has been verified
+      against Azurite, whose table implementation diverges from real Azure on exactly the
+      semantics this design leans on — ETag behaviour and conditional create. The
+      idempotent-materialization path is the one I'd most want to see run against the real
+      thing. Point a local `swa start` at the real connection string and run the cron tick
+      twice; nothing should duplicate.
 
 - [ ] **A custom domain** for the SWA, if you want something friendlier than
       `gentle-sky-0cf50a710.azurestaticapps.net` on the tablet.
@@ -353,10 +369,14 @@ comment or a file whenever convenient and I'll seed it.
 | `TABLES_CONNECTION_STRING` | now | Azure Table Storage |
 | `HOUSEHOLD_ID` | now | Prefixes every partition key. `preview` on PR environments. |
 | `HOUSEHOLD_TZ` | now | IANA zone; all local-date partition keys derive from it |
-| `ANTHROPIC_API_KEY` | Phase 5 | Server-side only, never shipped to the browser |
-| `GOOGLE_CLIENT_ID` | Phase 6 | |
-| `GOOGLE_CLIENT_SECRET` | Phase 6 | |
-| `GOOGLE_REDIRECT_URI` | Phase 6 | Must match the console exactly |
-| `TOKEN_ENCRYPTION_KEY` | Phase 6 | 32 random bytes, base64. AES-256-GCM on the stored refresh token. |
-| `GOOGLE_WEBHOOK_URL` | Phase 6 (optional) | Enables push updates. Unset = lazy sync on read, 5-minute staleness. |
-| `CRON_SHARED_SECRET` | Phase 9 | Same value in GitHub secrets and SWA settings |
+| `ANTHROPIC_API_KEY` | §3 | Server-side only, never shipped to the browser |
+| `GOOGLE_CLIENT_ID` | §4 | |
+| `GOOGLE_CLIENT_SECRET` | §4 | |
+| `GOOGLE_REDIRECT_URI` | §4 | Must match the console exactly |
+| `TOKEN_ENCRYPTION_KEY` | §4 | 32 random bytes, base64. AES-256-GCM on the stored refresh token. |
+| `GOOGLE_WEBHOOK_URL` | §4 (optional) | Enables push updates. Unset = lazy sync on read, 5-minute staleness. |
+| `CRON_SHARED_SECRET` | §5 | Same value in **both** GitHub repo secrets and SWA settings |
+| `TICK_URL` | §5 | GitHub repo secret only, not an app setting. `https://<your-swa>/api/cron/tick` |
+
+Phase references above are gone on purpose — every feature is built, so the only question
+left is which ones you switch on.

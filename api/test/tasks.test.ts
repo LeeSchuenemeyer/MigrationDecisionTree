@@ -217,17 +217,23 @@ describe('complete → approve', () => {
     const after = await getEntity<{ pointsBalance: number; pendingPoints: number; lifetimePoints: number }>(
       TABLES.members, memberPK(HH), memberRK('kid'),
     );
-    expect(after!.pointsBalance).toBe(before!.pointsBalance + 15);
-    expect(after!.lifetimePoints).toBe(before!.lifetimePoints + 15);
+    // An approval can also unlock a badge, which carries its own points and
+    // lands on the same balance. Accounting for it rather than asserting
+    // `+ 15`: that form only held while the achievement ladder was empty.
+    const bonus = (result.achievements ?? []).reduce((n, a) => n + a.pointsAwarded, 0);
+    expect(after!.pointsBalance).toBe(before!.pointsBalance + 15 + bonus);
+    expect(after!.lifetimePoints).toBe(before!.lifetimePoints + 15 + bonus);
+    // Pending tracks the chore only — a badge was never "pending".
     expect(after!.pendingPoints).toBe(before!.pendingPoints - 15);
 
     // The ledger is the authoritative record and must exist.
-    const ledger = await listPartition(
+    const ledger = await listPartition<{ delta: number }>(
       TABLES.ledger,
       ledgerPK(HH, 'kid', yearMonthOfLocalDate(today)),
     );
-    expect(ledger.length).toBeGreaterThan(0);
-    expect((ledger[0] as { delta: number }).delta).toBe(15);
+    // Look for the chore's own entry rather than indexing: rows come back
+    // newest-first, so a badge awarded microseconds later sorts ahead of it.
+    expect(ledger.some((e) => e.delta === 15)).toBe(true);
 
     // Queue row is deleted LAST, and by now it is gone.
     expect(await listQueue()).toHaveLength(0);
