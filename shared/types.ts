@@ -161,7 +161,39 @@ export interface FeedItem {
   points: number | null;
   commentary: string | null;
   commentarySource: 'claude' | 'fallback' | null;
+  /** What this item is about, so the ticker can collapse one thing's lifecycle. */
+  refType: string | null;
+  refId: string | null;
   createdAt: string;
+}
+
+/**
+ * One line in the marquee.
+ *
+ * Flattened from feed items, upcoming deadlines, and (Phase 6) calendar events
+ * into a single shape, so the ticker component renders a list and never branches
+ * on where a line came from.
+ */
+export interface TickerItem {
+  id: string;
+  source: 'activity' | 'upcoming' | 'overdue' | 'event';
+  /**
+   * The originating feed kind, or null for the synthesised deadline and
+   * calendar lines that have no feed row behind them.
+   *
+   * Carried purely so the client can tell an achievement from a finished chore
+   * without a second request — the wall tablet celebrates one and not the
+   * other, and it has no session to ask "whose badge is this?" with.
+   */
+  kind: FeedKind | null;
+  /** What is actually displayed. Claude's line when present, the fact otherwise. */
+  text: string;
+  detail: string | null;
+  icon: string | null;
+  points: number | null;
+  /** Small tag before the text: "Claude", "Next", "Overdue". Null for plain facts. */
+  label: string | null;
+  at: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -425,4 +457,69 @@ export interface LeaderboardRow {
   streakDays: number;
   streakMultiplier: number;
   streakAlive: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Achievements
+// ---------------------------------------------------------------------------
+
+export interface AchievementDefEntity {
+  name: string;
+  description: string;
+  /** JSON-encoded Criteria from shared/achievements.ts. */
+  criteriaJson: string;
+  tier: string;
+  icon: string;
+  pointsReward: number;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface AchievementAwardEntity {
+  /** Denormalized so the trophy case renders from one query with no fan-out. */
+  name: string;
+  description: string;
+  flavorText: string | null;
+  tier: string;
+  icon: string;
+  pointsAwarded: number;
+  /** 'claude' when generated, 'fallback' when hand-written copy was used. */
+  copySource: 'claude' | 'fallback';
+  copyModel: string | null;
+  earnedAt: string;
+}
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  flavorText: string | null;
+  tier: string;
+  icon: string;
+  pointsAwarded: number;
+  copySource: 'claude' | 'fallback';
+  earnedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Claude integration — parent-facing status and controls
+// ---------------------------------------------------------------------------
+
+export interface CommentaryStatus {
+  /** False when no API key is set; the ticker runs on hand-written copy. */
+  configured: boolean;
+  /** The parent toggle. Off means facts only, and nothing breaks. */
+  enabled: boolean;
+  budget: { job: string; used: number; cap: number }[];
+  /** Items a parent flagged with "that wasn't ok", newest first. */
+  incidents: CommentaryIncident[];
+}
+
+export interface CommentaryIncident {
+  id: string;
+  headline: string;
+  commentary: string | null;
+  reason: string;
+  reportedBy: string | null;
+  reportedAt: string;
 }

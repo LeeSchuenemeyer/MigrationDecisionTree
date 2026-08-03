@@ -1,0 +1,67 @@
+name: Cron tick
+
+# The timer trigger Static Web Apps does not have.
+#
+# SWA managed Functions are HTTP-trigger only, so every scheduled behaviour in
+# this app is either lazy-on-read or driven from here.
+#
+# ⚠️ Nothing correctness-critical may depend on this workflow. GitHub Actions
+# cron runs 5-20 minutes late under load, and **GitHub disables scheduled
+# workflows after 60 days of repository inactivity** — a family dashboard is
+# exactly the kind of repo that goes quiet for two months. Materialization and
+# calendar sync both also run lazily on read, so a household that opens the app
+# at all stays correct with this workflow switched off entirely.
+#
+# What the tick adds is the work nobody would otherwise trigger: batched
+# commentary, the daily challenge, the reconciler, the session sweep, the
+# nightly backup, and Google watch-channel renewal.
+#
+# The clean escape hatch, if the drift becomes annoying, is SWA Standard
+# (~$9/mo) plus a linked Function App, which gives real timer triggers.
+
+on:
+  schedule:
+    # Hourly at :07 rather than :00. The top of the hour is the busiest slot on
+    # the shared Actions scheduler, and this job has no reason to compete for it.
+    - cron: '7 * * * *'
+  workflow_dispatch:
+
+# A late run overlapping the next one is normal here. Every tick job is
+# idempotent and the daily ones are guarded to once per household-local day, so
+# concurrency is a cost question, not a correctness one — cancel the older.
+concurrency:
+  group: cron-tick
+  cancel-in-progress: true
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tick
+        env:
+          TICK_URL: ${{ secrets.TICK_URL }}
+          CRON_SHARED_SECRET: ${{ secrets.CRON_SHARED_SECRET }}
+        run: |
+          if [ -z "$TICK_URL" ] || [ -z "$CRON_SHARED_SECRET" ]; then
+            echo "::notice::TICK_URL or CRON_SHARED_SECRET not set — skipping. See docs/SETUP-TODO.md §5."
+            exit 0
+          fi
+
+          # --max-time bounds this well under SWA's ~45s gateway timeout; the
+          # tick's own jobs are individually guarded and a truncated run simply
+          # resumes next hour.
+          code=$(curl -sS -o /tmp/tick.json -w '%{http_code}' \
+            --max-time 60 --retry 2 --retry-delay 10 --retry-connrefused \
+            -X POST "$TICK_URL" \
+            -H "x-cron-secret: $CRON_SHARED_SECRET")
+
+          echo "HTTP $code"
+          # Truncated so a failure is readable in the log without pasting the
+          # whole result object into a public build log.
+          head -c 2000 /tmp/tick.json || true
+          echo
+
+          if [ "$code" != "200" ]; then
+            echo "::error::Tick failed with HTTP $code"
+            exit 1
+          fi

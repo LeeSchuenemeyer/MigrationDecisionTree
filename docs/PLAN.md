@@ -460,6 +460,169 @@ that look arbitrary later:
 `services/tasks` ↔ `services/points` cycle is exactly what works under `tsc` and
 then breaks once esbuild reorders the bundle.
 
+**Phase 4 as built.** The pulse contract changed from what §2 sketched. The
+server does **not** compute "what changed since rev N" — it has no per-slice
+history to diff against, and the only approximation available (invalidate every
+slice with a non-zero counter) invalidates *everything* forever after the first
+write of each kind, which is the exact opposite of the point. Instead
+`/api/pulse` returns the full per-slice counter map (~120 bytes) and the client
+diffs it against its previous copy. Exact, no history required, same payload
+size. The global `rev` stays as the ETag, so an idle household — most hours of
+most days — gets a 304 with no body at all.
+
+The ticker interleaves activity with upcoming deadlines rather than
+concatenating them: a marquee is read in passing, so whatever is on screen when
+someone walks by is what they see, and forty activity items from a busy morning
+would mean nobody ever sees a deadline. It also collapses a chore's lifecycle to
+its latest state — "ticked off" and "cleared" both belong in the history, but
+showing them side by side in one strip looks broken.
+
+`prefers-reduced-motion` gets a genuinely different presentation, not a disabled
+animation: one item at a time on a timer, no movement. A horizontally scrolling
+strip in someone's peripheral vision all day is unpleasant in a way a web page
+is not, because a kitchen display is unavoidable.
+
+**Phase 5 as built.** Two things diverge from §7, both discovered in the code:
+
+- **Per-model request surfaces are not interchangeable.** `effort` *errors* on
+  `claude-haiku-4-5`, so the ticker job omits it rather than setting it low.
+  `claude-opus-5` thinks by default and `max_tokens` caps thinking **plus**
+  output, so the keepsake job budgets ~2000 for a 200-token badge; disabling
+  thinking there is only legal at effort <= `high` and risks internal tags
+  leaking into the JSON, so it stays on. Sonnet 5 disables thinking outright —
+  naming a badge is a creative micro-task, not a reasoning problem.
+- **Budget is spent *before* the call, not after.** An in-flight request that
+  never returns still consumed quota; counting only successes is exactly how a
+  timeout loop escapes the cap it exists to enforce.
+
+`POST /api/cron/tick` landed here rather than in Phase 9, because batched
+commentary and the daily challenge have no other driver. The remaining tick jobs
+(reconciler, session sweep, Google channel renewal) still belong to Phase 9.
+
+**A bug worth recording: Table Storage omits null properties rather than storing
+them.** A field written as `null` reads back `undefined`, so
+`commentary === null` matched nothing and the ticker would never have received a
+single line. Fixed at both ends — `== null` in the filter, `?? null` coercion in
+the DTO mapper — and it is a trap for every nullable field in the schema, not
+just this one.
+
+**Phase 6 as built.** The plan specified `google-auth-library` + raw fetch;
+building it removed the library too. What the OAuth flow actually needs is an
+authorize URL, a code exchange, and a refresh — three POSTs to one endpoint. The
+library's value is service-account JWT signing and ADC discovery, neither of
+which applies to a single household connection. Dropping it also *resolves* the
+`node >= 22` vs pinned `node:20` conflict rather than deferring it, and shrinks
+the bundle. **Zero Google dependencies in `api/package.json`.**
+
+Phase 6 requests `calendar.readonly`, not read-write. Phase 7 widens the scope
+and Google will require re-consent at that point — an expected, one-time cost,
+and better than asking a family for write access to their calendar before
+anything writes.
+
+`GOOGLE_WEBHOOK_URL` is optional. Unset, no push channel is created and the
+calendar syncs lazily on read, which bounds staleness at five minutes because
+the kiosk polls all day. That is also the only mode available locally, since
+Google cannot reach localhost — so the fallback path is the one that gets
+exercised during development, which is the right way round.
+
+**Phase 7 as built.** Three things are worth recording:
+
+- **The scope widening is a product state, not a migration.** A household
+  connected under Phase 6 keeps a `calendar.readonly` token, and Google will not
+  upgrade a grant silently. So `canWrite` is derived from the stored scope,
+  carried all the way to the client in `/api/google/status`, and the UI simply
+  withholds the editing affordances — no add button, rows not tappable, one line
+  of explanation for a parent. The alternative, letting the buttons render and
+  403, converts a one-time consent step into an unexplained failure on a
+  kitchen wall.
+
+- **Google is written first, and its answer is what gets stored — never the
+  input.** Google assigns the id, normalizes the times, and returns the etag.
+  Storing our own version instead leaves a local row that no subsequent sync can
+  match, which is the same class of bug as a malformed row key and just as
+  silent.
+
+- **`markLocalEdit` opens the echo window *before* the push, not after.** The
+  webhook genuinely can arrive before the push response is persisted; a marker
+  written afterwards is a marker written too late. This is why the third echo
+  layer exists at all — layers 1 and 2 both depend on having already stored
+  something about a request that may not have returned yet.
+
+`deleteEvent` needed a rename to land: the private sync-side "remote said this
+is gone" path and the new exported "the family deleted this" path had the same
+name, which `tsc` reports but only after both exist. The private one is now
+`applyRemoteDeletion`, which is also the more honest name for what it does.
+
+**Phase 8 as built.** Four notes:
+
+- **The error boundary was necessary and not sufficient.** A React boundary
+  catches render-phase errors and nothing else — not a chunk that fails to load
+  after a deploy, not a throw during module evaluation before React mounts, not
+  an unhandled rejection. Those are precisely the failures that leave a wall
+  tablet on a white screen. `lib/lastResort.ts` adds window-level `error` and
+  `unhandledrejection` listeners, installed *before* render because the case it
+  exists for is the one where render never happens. Two rules keep it from
+  becoming the problem: it only fires when the app never mounted or the module
+  graph is broken, and it never reloads twice inside ten minutes — a fault that
+  survives the reload would otherwise reload all night.
+
+- **The wake lock re-acquire is load-bearing, not defensive.** The sentinel is
+  released by the browser on every visibility change and is not restored
+  automatically, so without a `visibilitychange` handler the lock survives
+  exactly until the first interruption and then never again. That failure is
+  invisible for days.
+
+- **The contrast audit found real failures, not near-misses.** `ink-faint`
+  measured **2.70:1** in the light theme and 3.16:1 in the dark one, while being
+  used almost exclusively at `text-xs` — the smallest text in the app. The light
+  theme's accent and status colours were large-text-only while carrying point
+  values in mono. Five tokens moved; all now clear 4.5:1 against both `ground`
+  and `panel`, computed rather than eyeballed. The prototype and `/compat.html`
+  were updated in the same commit so the "tokens map 1:1" claim stays true.
+
+- **Reduced motion drops the animation, not the announcement.** The celebration
+  panel still appears, still holds, still carries `role="alert"`. What goes away
+  is the movement. A kitchen display is unavoidable in a way a web page is not,
+  so this is the one place where the accessible path has to be equal rather than
+  merely available.
+
+The end-to-end test runs against a real `swa start` — Azurite, the Functions
+host, SWA routing, real cookies — and passes repeatedly against a dirty
+household rather than requiring a pristine seed, which is what makes it worth
+having in CI at all.
+
+**Phase 9 as built.** Four notes:
+
+- **The daily guard claims the day BEFORE running the job, not after.** Actions
+  cron runs late enough under load that a delayed tick overlaps the next hour's,
+  and both read "not run today". Claiming afterwards lets both proceed, which
+  for the reconciler is merely wasteful and for anything that writes a feed item
+  or spends money is not. The cost of that ordering is that a job which crashes
+  has burned its day — the right trade, because every one of these is a repair
+  job and a repair skipped for a day is invisible.
+
+- **The "run the tick twice" test was written vacuous and had to be fixed.**
+  The first version ran the tick against a household with no task definitions,
+  compared three zeroes to three zeroes, and passed. It now materialises a real
+  chore, drives it through completion and approval so there is a ledger entry
+  and feed items to duplicate, and asserts each count is non-zero *before*
+  asserting it is unchanged. A test that cannot fail is worse than no test,
+  because it is also a claim.
+
+- **`@azure/storage-blob@12.33` declares `node >= 22`** against a runtime pinned
+  to `node:20` — the same trap as `google-auth-library` in Phase 6. Here the
+  dependency is genuinely wanted, so it is pinned `~12.32.0` (the last release
+  declaring `>= 20`) rather than `^`, which would float straight back into the
+  mismatch on the next install.
+
+- **Restore is deliberately not built.** An automated restore endpoint is a
+  one-tap way to destroy the live household, serving an event that happens
+  approximately never. The snapshot is gzipped JSON in the same storage account;
+  recovering from it is meant to be tedious and deliberate.
+
+Sessions and PIN-attempt rows are excluded from the snapshot: restoring them
+would resurrect logins that were meant to have expired.
+
 
 ## 9. Verification
 
@@ -503,6 +666,37 @@ tick twice → no duplicate instances, ledger entries, or feed items**; restart 
 mid-session → recovers on next poll, no white screen; idle kiosk 15 min → session dropped,
 still rendering.
 
+**Smoke checklist — as actually run.** Walked against a live `swa start` (Azurite +
+Functions host + SWA routing + real cookies) after Phase 9. 26 of 26 automatable
+checks passed. What that covered, and what it did not:
+
+*Verified against the running stack:* cold load with no session; wrong PIN ×5 → HTTP 429
+lockout **and** the security feed item, with another member still able to sign in;
+complete → `pending` shown separately and **not** folded into the ranked total; parent
+approve → points land, ticker line written, pulse revision moves (so the kiosk refreshes
+without a reload); redemption through the *same* parent queue as chores; cron tick twice →
+identical instance and feed counts; cron rejects a missing **and** a wrong secret; a child
+cannot read the ops screen or adjust their own points; reconciler reports zero drift after
+a real approve-and-redeem cycle; killing Azurite mid-session → the static page keeps
+serving and the API recovers on the next poll with no restart and no white screen; the
+whole no-Anthropic-key path, which is the app's resting state locally — the challenge and
+ticker both render from hand-written copy, and badges are awarded with deterministic names.
+
+*Not verifiable here, and stated rather than glossed:*
+
+- **Every Google Calendar item.** Create/edit/delete round-tripping, the echo layers under
+  a real webhook, and the month-move all need a real Google account and a public HTTPS
+  callback. They are covered by 20 tests against a faked Google surface, which is a
+  materially weaker claim than having watched an event appear on a phone. **This is the
+  largest untested-in-anger surface in the project.**
+- **Claude generation with a real key.** Only the fallback path has run. The prompts, the
+  structured-output schema, and the PG-13 post-filter are unit-tested, but no real
+  completion has ever been through them.
+- **Streak multipliers accruing over consecutive real days**, and the higher badge tiers.
+  Both are unit-tested at the n-1/n/n+1 boundary; neither has been watched over a week.
+- **A 15-minute idle kiosk dropping its session.** The expiry logic is tested; the wait
+  is not something to sit through.
+
 **Automated tests, right-sized:**
 - **Tier 1 — Vitest on `shared/`, where nearly all the value is.** Every module is a pure
   function encoding rules that are easy to get subtly wrong and painful to debug in
@@ -520,7 +714,11 @@ still rendering.
   expiry, ETag-conflict retry on `pointsBalance`.
 - **Tier 3 — exactly one Playwright test** against `swa start`: PIN login → complete task →
   parent approve → assert leaderboard and ticker. One end-to-end test catches integration
-  breakage; ten become maintenance you resent.
+  breakage; ten become maintenance you resent. Lives in `e2e/`, which owns the SWA CLI and
+  Functions core tools so `verify` stays fast; run it with `npm test --prefix e2e` against a
+  live `swa start`. It reads the ranked total from a `data-points` attribute rather than the
+  rendered text, because the bug it guards against — pending points folded into the ranked
+  total — is exactly the one that text-matching would paper over.
 - **Tier 4 — `ci.yml` on every branch push** (not just `main`): `tsc --noEmit`, ESLint,
   Vitest 1+2, build both packages. This is the *only* feedback loop available on
   `claude/family-dashboard-gamification-ycon4f`, given the SWA workflow's `main`-only trigger.
@@ -557,9 +755,36 @@ functions registered and no obvious error.
 
 **R7 — "Not installable" has a practical consequence.** Skipping the PWA is right, but a
 plain browser tab is a poor kiosk (URL bar, sleep, accidental navigation). The substitute is
-**device configuration, not code**: Fully Kiosk Browser on Android, or Guided Access +
-Safari on iPad, pinned to `/?kiosk=1`. Decide the tablet platform early — Fully Kiosk is
-meaningfully better for this than iPad Guided Access.
+**device configuration, not code**.
+
+*Decided:* **Android tablets and phones, plus an LG StanbyME 2.** The always-on wall display
+should be an Android tablet running **Fully Kiosk Browser**, pinned to `/?kiosk=1` — real
+kiosk mode, screen-on control, auto-restart, auto-launch, URL locking. webOS has no
+equivalent, so the StanbyME 2 is best treated as a portable second screen rather than the
+unattended wall display.
+
+*The engine floor is now the StanbyME 2.* webOS 24 ships Chromium 108, webOS 25 ships
+Chromium 120. `web/vite.config.ts` pins `target: chrome108` so this stops being a moving
+default. Tailwind v4 nominally wants Chrome 111+ for `color-mix()`, but it emits an
+8-digit-hex fallback outside the `@supports` guard for every opacity modifier — verified
+against the built CSS — so 108 degrades to a slightly different shade rather than losing the
+colour. `web/public/compat.html` is a standalone ES5 diagnostic reporting the actual engine,
+whether touch reaches the page, and a verdict. It deliberately shares nothing with the app
+bundle: a diagnostic built from the bundle tells you nothing on the device where the bundle
+is the thing that fails.
+
+*If the StanbyME must be primary:* package it as a webOS app (`appinfo.json` with
+`supportTouchMode: "full"`), which buys real touch events, a launcher tile, and auto-launch,
+at the cost of an LG developer account and ~7-day re-signing on a dev-mode device.
+
+**R7a — The CSP silently blocked the app shell's inline script.** `default-src 'self'` with
+no `script-src` blocks inline `<script>`, and the one in `index.html` was the pre-paint
+surface detection. The symptom would have been a wall tablet rendering the phone layout,
+permanently, with the error only in a console nobody was watching. Moved to
+`web/public/surface-boot.js` and loaded with `src`; a CI step now fails the build if an
+inline script reappears in `web/dist/index.html`. `/compat.html` gets a route-scoped CSP
+permitting its inline script but setting `connect-src 'none'`, so the page it relaxes for
+cannot talk to anything.
 
 **R8 — Attribution.** Dashboard-created events show as authored by the one household Google
 account, and each family member must have the household calendar *shared to* their personal

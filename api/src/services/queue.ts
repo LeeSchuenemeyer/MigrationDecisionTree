@@ -1,5 +1,5 @@
 import { TABLES, actionQueuePK } from '../../../shared/keys.js';
-import type { ActionQueueEntity } from '../../../shared/types.js';
+import type { Achievement, ActionQueueEntity } from '../../../shared/types.js';
 import { env } from '../lib/env.js';
 import { TaskError } from '../lib/errors.js';
 import { getEntity } from '../lib/tables.js';
@@ -26,6 +26,15 @@ export interface QueueResolution {
   /** Points that moved, signed. Zero for a rejection. */
   delta: number;
   memberId: string;
+  /**
+   * Badges unlocked by this approval, if any.
+   *
+   * Surfaced because they carry their own `pointsAwarded`, so a caller
+   * reconciling a balance change against `delta` alone would come up short —
+   * which is exactly how two tests ended up asserting totals that silently
+   * assumed no badge could ever fire.
+   */
+  achievements?: Achievement[];
 }
 
 export async function resolveQueueItem(
@@ -58,5 +67,10 @@ export async function resolveQueueItem(
   }
 
   const result = await approveTask(rowKey, resolver);
-  return { kind: row.kind, delta: result.awarded, memberId: result.memberId };
+  return {
+    kind: row.kind,
+    delta: result.awarded,
+    memberId: result.memberId,
+    achievements: result.achievements ?? [],
+  };
 }

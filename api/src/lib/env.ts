@@ -54,6 +54,17 @@ export const env = {
   get cronSharedSecret(): string {
     return required('CRON_SHARED_SECRET');
   },
+  /**
+   * Public HTTPS URL Google should push change notifications to.
+   *
+   * Optional by design: without it the watch channel is simply never created
+   * and the calendar falls back to lazy sync on read, which bounds staleness at
+   * five minutes anyway. That is also the only mode available during local
+   * development, since Google cannot reach localhost.
+   */
+  get googleWebhookUrl(): string | null {
+    return process.env['GOOGLE_WEBHOOK_URL'] ?? null;
+  },
   get isProduction(): boolean {
     return (process.env['NODE_ENV'] ?? '') === 'production';
   },

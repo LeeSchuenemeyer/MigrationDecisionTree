@@ -14,7 +14,6 @@
  * real family data.
  */
 
-import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -84,6 +83,24 @@ const MEMBERS: SeedMember[] = [
   { id: 'theo', displayName: 'Theo', role: 'child', avatarEmoji: '🐢', avatarColor: '#57C98A', pin: '6142', points: 295, sortOrder: 3 },
   { id: 'iris', displayName: 'Iris', role: 'child', avatarEmoji: '🐙', avatarColor: '#E8705F', pin: '8305', points: 180, sortOrder: 4 },
 ];
+
+/**
+ * A stable instant for a history entry.
+ *
+ * Anchored to midday UTC of the target date rather than "now minus N days",
+ * because the timestamp is part of the row key. With `Date.now()` in it, every
+ * re-seed writes a NEW row instead of replacing the old one — so running the
+ * seed twice silently doubled the ledger and left the reconciler reporting
+ * drift that was entirely an artifact of the seeding.
+ *
+ * Midday, not midnight, so a household west of Greenwich still lands on the
+ * intended local date.
+ */
+function historyWhen(daysAgo: number): number {
+  const d = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+  d.setUTCHours(12, 0, 0, 0);
+  return d.getTime();
+}
 
 /** Deterministic sample history, so repeated seeds produce a stable board. */
 const HISTORY: { daysAgo: number; actor: string; headline: string; points: number | null; icon: string }[] = [
@@ -196,10 +213,10 @@ async function main(): Promise<void> {
   }
 
   const byId = new Map(MEMBERS.map((m) => [m.id, m]));
-  for (const h of HISTORY) {
-    const when = Date.now() - h.daysAgo * 24 * 60 * 60 * 1000;
+  for (const [index, h] of HISTORY.entries()) {
+    const when = historyWhen(h.daysAgo);
     const actor = byId.get(h.actor)!;
-    const feedId = randomUUID();
+    const feedId = `seed-feed-${index}`;
     await upsert(TABLES.feed, {
       partitionKey: feedPK(env.householdId, localDateOf(when, env.timezone)),
       rowKey: feedRK(when, feedId),
@@ -225,13 +242,13 @@ async function main(): Promise<void> {
   // The ledger is authoritative; the feed is a narration of it. Seeding one
   // without the other gives a ticker full of events and an empty points screen.
   let ledgerRows = 0;
-  for (const h of HISTORY) {
+  for (const [index, h] of HISTORY.entries()) {
     if (h.points === null) continue;
-    const when = Date.now() - h.daysAgo * 24 * 60 * 60 * 1000;
+    const when = historyWhen(h.daysAgo);
     const localDate = localDateOf(when, env.timezone);
     await upsert(TABLES.ledger, {
       partitionKey: ledgerPK(env.householdId, h.actor, yearMonthOfLocalDate(localDate)),
-      rowKey: ledgerRK(when, randomUUID()),
+      rowKey: ledgerRK(when, `seed-ledger-${index}`),
       delta: h.points,
       kind: h.points > 0 ? 'task_award' : 'redemption',
       refType: null,
@@ -243,7 +260,46 @@ async function main(): Promise<void> {
     });
     ledgerRows++;
   }
-  console.log(`  ${ledgerRows} backdated ledger entries`);
+
+  /**
+   * Make the ledger actually add up to the balances above.
+   *
+   * `Member.pointsBalance` is a cache; the ledger is authoritative. Seeding a
+   * balance of 340 alongside a handful of unrelated history entries breaks that
+   * invariant on row one — and the Phase 9 reconciler, correctly, "fixes" it by
+   * wiping the standings on the first cron tick.
+   *
+   * So the difference becomes an explicit opening-balance entry, dated before
+   * the history window. The standings survive, the ledger explains them, and
+   * the reconciler has nothing to report — which is what makes it worth
+   * believing when it does report something.
+   */
+  for (const m of MEMBERS) {
+    const earned = HISTORY.filter((h) => h.actor === m.id && h.points !== null).reduce(
+      (sum, h) => sum + (h.points ?? 0),
+      0,
+    );
+    const opening = m.points - earned;
+    if (opening === 0) continue;
+
+    const when = historyWhen(45);
+    const localDate = localDateOf(when, env.timezone);
+    await upsert(TABLES.ledger, {
+      partitionKey: ledgerPK(env.householdId, m.id, yearMonthOfLocalDate(localDate)),
+      rowKey: ledgerRK(when, `seed-opening-${m.id}`),
+      delta: opening,
+      kind: 'adjustment',
+      refType: null,
+      refId: null,
+      description: 'Opening balance',
+      balanceAfter: opening,
+      actorMemberId: m.id,
+      createdAt: new Date(when).toISOString(),
+    });
+    ledgerRows++;
+  }
+
+  console.log(`  ${ledgerRows} backdated ledger entries (ledger sums to each seeded balance)`);
 
   const today = localDateNow(env.timezone);
   for (const s of STREAKS) {

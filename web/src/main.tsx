@@ -9,8 +9,11 @@ import { Board } from './routes/Board';
 import { Queue } from './routes/Queue';
 import { Points } from './routes/Points';
 import { Rewards } from './routes/Rewards';
+import { Calendar } from './routes/Calendar';
+import { Settings } from './routes/Settings';
 import { Placeholder } from './routes/Placeholder';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { installLastResortReload } from './lib/lastResort';
 
 /**
  * Data policy: nothing polls on its own. A single /api/pulse endpoint reports a
@@ -34,12 +37,12 @@ const router = createBrowserRouter([
     element: <Shell />,
     children: [
       { index: true, element: <Board /> },
-      { path: 'calendar', element: <Placeholder title="Calendar" phase="Phase 6" /> },
+      { path: 'calendar', element: <Calendar /> },
       { path: 'points', element: <Points /> },
       { path: 'queue', element: <Queue /> },
       { path: 'rewards', element: <Rewards /> },
       { path: 'me', element: <Placeholder title="Me" phase="Phase 1" /> },
-      { path: 'settings', element: <Placeholder title="Settings" phase="Phase 1" /> },
+      { path: 'settings', element: <Settings /> },
       { path: 'kiosk/enroll', element: <Placeholder title="Enroll this tablet" phase="Phase 1" /> },
       { path: '*', element: <Placeholder title="Not found" phase="404" /> },
     ],
@@ -47,6 +50,10 @@ const router = createBrowserRouter([
 ]);
 
 const isKiosk = document.documentElement.dataset['surface'] === 'kiosk';
+
+// Installed before render, deliberately: the failure it exists for is the one
+// where the line below never runs.
+installLastResortReload(isKiosk);
 
 const rootEl = document.getElementById('root');
 if (!rootEl) throw new Error('#root not found');

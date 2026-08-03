@@ -1,7 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useSurface } from '@/lib/surface';
+import { usePulse } from '@/lib/pulse';
+import { useBurnInDrift, useNightDim, useWakeLock } from '@/lib/kiosk';
 import { SessionControl } from '@/components/SessionControl';
+import { Celebration } from '@/components/Celebration';
+import { Ticker } from '@/components/Ticker';
 
 /**
  * The surface shells.
@@ -21,11 +25,36 @@ const NAV = [
   { to: '/me', label: 'Me', end: false },
 ] as const;
 
+/**
+ * Desktop only, deliberately.
+ *
+ * Parent-admin work is uncomfortable on a phone and actively wrong on a wall
+ * tablet, and a seventh tab in a bottom bar makes the six that matter smaller
+ * for everyone. It stays reachable everywhere by URL.
+ */
+const DESKTOP_NAV = [{ to: '/settings', label: 'Settings', end: false }] as const;
+
 export function Shell(): ReactNode {
   const surface = useSurface();
-  if (surface === 'kiosk') return <KioskShell />;
-  if (surface === 'desktop') return <DesktopShell />;
-  return <MobileShell />;
+  const isKiosk = surface === 'kiosk';
+
+  // Mounted once, here, for the whole app. This is the ONLY thing that polls;
+  // every other query sits at staleTime: Infinity and is invalidated by what
+  // this returns. See lib/pulse.ts.
+  usePulse();
+
+  // Kiosk-only, and gated at the hook rather than the call site so a surface
+  // change at runtime (a tablet enrolling itself) takes effect without a
+  // remount. On a phone all three are actively harmful.
+  useWakeLock(isKiosk);
+  useNightDim(isKiosk);
+
+  return (
+    <>
+      {isKiosk ? <KioskShell /> : surface === 'desktop' ? <DesktopShell /> : <MobileShell />}
+      <Celebration />
+    </>
+  );
 }
 
 /**
@@ -34,8 +63,15 @@ export function Shell(): ReactNode {
  * once — walking past it must be enough.
  */
 function KioskShell(): ReactNode {
+  const drift = useBurnInDrift(true);
+
   return (
-    <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
+    <div
+      className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden"
+      // A whole-shell translate rather than per-element nudging: one transform,
+      // no reflow, and nothing can be accidentally left pinned to a fixed pixel.
+      style={{ transform: `translate3d(${drift.x}px, ${drift.y}px, 0)` }}
+    >
       <TopBar />
       <main className="min-h-0 overflow-hidden">
         <Outlet />
@@ -48,12 +84,14 @@ function KioskShell(): ReactNode {
 /** Phone: bottom tab bar, each tab scrolls independently, safe-area insets. */
 function MobileShell(): ReactNode {
   return (
-    <div className="grid h-full grid-rows-[auto_1fr_auto]">
+    <div className="grid h-full grid-rows-[auto_1fr_auto_auto]">
       <TopBar />
       <main className="min-h-0 overflow-y-auto">
         <Outlet />
       </main>
+      <Ticker />
       <nav
+        aria-label="Main"
         className="border-line bg-panel flex justify-around border-t"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
@@ -81,11 +119,13 @@ function MobileShell(): ReactNode {
 function DesktopShell(): ReactNode {
   return (
     <div className="grid h-full grid-cols-[190px_1fr]">
-      <aside className="border-line bg-panel flex flex-col gap-1 border-r p-4">
+      {/* nav, not aside: it is the primary navigation, and `aside` announces it
+          as complementary content a screen reader user can safely skip. */}
+      <nav aria-label="Main" className="border-line bg-panel flex flex-col gap-1 border-r p-4">
         <div className="font-display text-brand mb-4 text-sm tracking-[0.18em] uppercase">
           Family HQ
         </div>
-        {NAV.map((n) => (
+        {[...NAV, ...DESKTOP_NAV].map((n) => (
           <NavLink
             key={n.to}
             to={n.to}
@@ -100,7 +140,7 @@ function DesktopShell(): ReactNode {
             {n.label}
           </NavLink>
         ))}
-      </aside>
+      </nav>
       <div className="grid grid-rows-[auto_1fr] overflow-hidden">
         <TopBar />
         <main className="min-h-0 overflow-y-auto">
@@ -156,7 +196,5 @@ function Clock(): ReactNode {
 }
 
 function TickerSlot(): ReactNode {
-  // The real ticker arrives in Phase 4; the slot is reserved now so the kiosk
-  // grid never reflows when it lands.
-  return <div className="border-line bg-panel h-12 border-t" aria-hidden="true" />;
+  return <Ticker />;
 }

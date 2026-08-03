@@ -16,7 +16,9 @@
   --color-line: #27313d;
   --color-ink: #e8edf2;
   --color-ink-dim: #93a2b4;
-  --color-ink-faint: #61707f;
+  /* Was #61707f, which measured 3.16:1 on `panel` — large-text-only, while it
+     is used almost exclusively at text-xs. 4.54:1 on panel, 5.06:1 on ground. */
+  --color-ink-faint: #7d8a96;
 
   /* Accent — points and achievements only. Never used for chrome. */
   --color-brand: #f0a830;
@@ -47,11 +49,15 @@
     --color-line: #dbe2ea;
     --color-ink: #16202b;
     --color-ink-dim: #566577;
-    --color-ink-faint: #8695a6;
-    --color-brand: #b8730c;
+    /* All four raised to clear 4.5:1 against both `ground` and `panel`. The
+       light theme was the weaker of the two throughout — `ink-faint` measured
+       2.70:1, an outright failure, and the accent and status colours were
+       large-text-only while carrying point values in text-xs mono. */
+    --color-ink-faint: #646f7c;
+    --color-brand: #9b610a;
     --color-pending: #2f6fb5;
-    --color-approved: #1f8a54;
-    --color-overdue: #c4402e;
+    --color-approved: #1c7d4c;
+    --color-overdue: #c3402e;
   }
 }
 
@@ -110,6 +116,40 @@ html[data-surface='kiosk'] body {
 html[data-night='true'] body {
   filter: brightness(0.55);
   transition: filter 1.2s ease;
+}
+
+/* The ticker belt. The strip holds two identical copies of the item list, so
+   translating by exactly -50% lands the second copy where the first began and
+   the loop has no seam. Percentage-based, so it works at any content width
+   without measuring anything. */
+@keyframes fd-ticker {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+/* The badge moment. A short rise-and-settle rather than a bounce — this lands
+   on a wall at eye level, and something springing at the room is startling in a
+   way the same animation in a browser tab is not. */
+@keyframes fd-celebrate {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.94);
+  }
+  60% {
+    transform: translate3d(0, 0, 0) scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.fd-celebrate {
+  animation: fd-celebrate 420ms ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {

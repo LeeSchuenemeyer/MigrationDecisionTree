@@ -2,6 +2,8 @@ import { useState, type ReactNode } from 'react';
 import type { LeaderboardRow, LedgerEntry, StreakView } from '@shared/types';
 import { useLeaderboard, useMemberPoints } from '@/lib/points';
 import { useSession } from '@/lib/session';
+import { useAchievements } from '@/lib/claude';
+import type { Achievement } from '@shared/types';
 
 /**
  * Standings.
@@ -59,6 +61,7 @@ export function Points(): ReactNode {
       {detail.data && (
         <div className="flex min-h-0 flex-col gap-3">
           <StreakPanel streak={detail.data.streak} name={detail.data.displayName} />
+          <TrophyCase memberId={focus} />
           <LedgerList entries={detail.data.entries} name={detail.data.displayName} />
         </div>
       )}
@@ -82,6 +85,12 @@ function StandingRow({
       <button
         type="button"
         onClick={onSelect}
+        // The ranked total, exposed for the end-to-end test. Reading it out of
+        // the rendered text would mean matching against a row that also carries
+        // a streak length and a pending badge — and "pending must never be
+        // folded into the ranked total" is exactly what that test asserts.
+        data-member={row.member.id}
+        data-points={row.points}
         className={[
           'border-line bg-panel grid w-full grid-cols-[auto_auto_1fr_auto] items-center gap-3 rounded-md border px-3 text-left transition-colors',
           'min-h-touch kiosk:min-h-touch-kiosk kiosk:gap-5 kiosk:px-5',
@@ -154,6 +163,63 @@ function StreakPanel({ streak, name }: { streak: StreakView; name: string }): Re
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * The trophy case.
+ *
+ * Badges are permanent — a streak badge stays earned after the streak breaks,
+ * which is why `shared/achievements.ts` evaluates against the personal best
+ * rather than the current run. A shelf that empties out is not a shelf.
+ */
+function TrophyCase({ memberId }: { memberId: string | null }): ReactNode {
+  const awards = useAchievements(memberId);
+  const badges = awards.data ?? [];
+  if (badges.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="font-display text-ink-dim text-xs tracking-[0.14em] uppercase kiosk:text-base">
+        Badges
+      </h3>
+      <ul className="flex flex-wrap gap-2">
+        {badges.map((badge) => (
+          <BadgeChip key={badge.id} badge={badge} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const TIER_RING: Record<string, string> = {
+  bronze: 'border-line',
+  silver: 'border-ink-faint',
+  gold: 'border-brand/60',
+  legendary: 'border-brand',
+};
+
+function BadgeChip({ badge }: { badge: Achievement }): ReactNode {
+  return (
+    <li
+      // The flavour line is the reward for looking closely; it does not need to
+      // be on screen permanently on a wall display.
+      title={badge.flavorText ?? badge.description}
+      className={[
+        'bg-panel flex items-center gap-2 rounded-full border px-3 py-1.5',
+        TIER_RING[badge.tier] ?? 'border-line',
+      ].join(' ')}
+    >
+      <span aria-hidden="true" className="text-lg kiosk:text-2xl">
+        {badge.icon}
+      </span>
+      <span className="text-xs kiosk:text-lg">{badge.name}</span>
+      {badge.pointsAwarded > 0 && (
+        <span className="text-brand font-mono text-[10px] tabular-nums kiosk:text-sm">
+          +{badge.pointsAwarded}
+        </span>
+      )}
+    </li>
   );
 }
 

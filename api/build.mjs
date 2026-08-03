@@ -37,6 +37,29 @@ const options = {
   // deploy can prune api/ to a single runtime dependency.
   external: ['@azure/functions'],
   nodePaths: [resolve(here, 'node_modules')],
+
+  /**
+   * `import.meta.url` does not exist in CommonJS output.
+   *
+   * esbuild substitutes an empty object for `import.meta` when bundling ESM
+   * sources to CJS, so a dependency doing the standard
+   * `createRequire(import.meta.url)` dance gets `createRequire(undefined)` and
+   * throws — at module load, before a single function registers.
+   * `@azure/storage-blob` does exactly this to reach its native CRC64 helper.
+   *
+   * The symptom is the R6 failure mode in the plan and it is genuinely nasty:
+   * the deploy SUCCEEDS, the host starts, and every route 404s with "No job
+   * functions found" buried in a log nobody reads. One bad dependency takes
+   * down the entire API, not just the feature that pulled it in.
+   *
+   * Pointing it at the bundle's own path is what the value would have meant
+   * had the module not been bundled.
+   */
+  banner: {
+    js: "const __fdImportMetaUrl = require('node:url').pathToFileURL(__filename).href;",
+  },
+  define: { 'import.meta.url': '__fdImportMetaUrl' },
+
   logLevel: 'info',
 };
 
